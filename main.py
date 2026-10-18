@@ -1,5 +1,4 @@
 import os
-import socket
 import datetime
 import csv
 import io
@@ -8,52 +7,25 @@ os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 
 from nicegui import ui, app
 from django.contrib.auth.hashers import make_password, check_password
+from django.db.models import Sum
 from db_setup import init_django
 
 init_django()
 from models_app.models import AppUser, SavedArea, DailyReport, PasswordResetToken
 
-def get_local_ip():
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
+PORT = int(os.getenv("PORT", "8080"))
+STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
+APP_BASE_URL = os.getenv("APP_BASE_URL", os.getenv("RENDER_EXTERNAL_URL", f"http://localhost:{PORT}"))
 
-MOBILE_IP = get_local_ip()
-PORT = 8080
-APP_BASE_URL = os.getenv("APP_BASE_URL", f"http://{MOBILE_IP}:{PORT}")
-
-# FIX: shared=True lagavu padse nahi to error avse
 ui.add_css("""
-    .count-box .q-field__control {
-        padding-left: 4px !important;
-        padding-right: 4px !important;
-        border-radius: 10px !important;
-        min-height: 44px !important;
-    }
-    .count-box input::placeholder {
-        color: #475569 !important;
-        opacity: 1 !important;
-        font-weight: 700 !important;
-    }
-    .title-pill .q-field__control {
-        padding-left: 8px !important;
-        padding-right: 8px !important;
-    }
-    .report-patti {
-        transition: all 0.1s;
-        cursor: pointer;
-    }
-    .report-patti:hover {
-        transform: translateY(-1px);
-    }
+    .count-box .q-field__control { padding-left: 4px !important; padding-right: 4px !important; border-radius: 10px !important; min-height: 44px !important; }
+    .count-box input::placeholder { color: #475569 !important; opacity: 1 !important; font-weight: 700 !important; }
+    .title-pill .q-field__control { padding-left: 8px !important; padding-right: 8px !important; }
+    .report-patti { transition: all 0.1s; cursor: pointer; }
+    .report-patti:hover { transform: translateY(-1px); }
 """, shared=True)
 
-# ==================== DOWNLOAD GENERATORS ====================
+# ==================== DOWNLOAD GENERATORS (FAST - NO LOOP) ====================
 def generate_single_csv(report: DailyReport):
     output = io.StringIO()
     writer = csv.writer(output)
@@ -67,13 +39,11 @@ def generate_single_csv(report: DailyReport):
     writer.writerow(["Total", "", report.total_qty, f"{report.total_qty} MTR"])
     return output.getvalue().encode("utf-8")
 
-def generate_month_csv(qs, period_text, title):
+def generate_month_csv(t63, t90, t110, period_text, title):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([title])
-    writer.writerow([period_text])
+    writer.writerow([title]); writer.writerow([period_text])
     writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-    t63 = sum(r.qty_63mm for r in qs); t90 = sum(r.qty_90mm for r in qs); t110 = sum(r.qty_110mm for r in qs)
     writer.writerow([1, "63MM", t63, f"{t63} MTR"])
     writer.writerow([2, "90MM", t90, f"{t90} MTR"])
     writer.writerow([3, "110MM", t110, f"{t110} MTR"])
@@ -105,7 +75,7 @@ def generate_excel_fast_single(report: DailyReport):
         output = io.BytesIO(); wb.save(output); return output.getvalue()
     except Exception as e: return generate_single_csv(report)
 
-def generate_excel_fast_month(qs, period_text, title):
+def generate_excel_fast_month(t63, t90, t110, period_text, title):
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -118,7 +88,6 @@ def generate_excel_fast_month(qs, period_text, title):
         ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
         for col in range(1,5):
             cell = ws.cell(row=4, column=col); cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center'); cell.border = thin_border
-        t63 = sum(r.qty_63mm for r in qs); t90 = sum(r.qty_90mm for r in qs); t110 = sum(r.qty_110mm for r in qs)
         for idx, (dia, qty) in enumerate([("63MM", t63), ("90MM", t90), ("110MM", t110)], start=1):
             ws.append([idx, dia, qty, f"{qty} MTR"])
             r = ws.max_row
@@ -128,7 +97,7 @@ def generate_excel_fast_month(qs, period_text, title):
         for c in range(1,5): ws.cell(row=r, column=c).font = Font(bold=True, color="059669"); ws.cell(row=r, column=c).alignment = Alignment(horizontal='center', vertical='center'); ws.cell(row=r, column=c).border = thin_border
         ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 15; ws.column_dimensions['C'].width = 12; ws.column_dimensions['D'].width = 15
         output = io.BytesIO(); wb.save(output); return output.getvalue()
-    except Exception: return generate_month_csv(qs, period_text, title)
+    except Exception: return generate_month_csv(t63, t90, t110, period_text, title)
 
 def generate_pdf_fast_single(report: DailyReport):
     try:
@@ -151,7 +120,7 @@ def generate_pdf_fast_single(report: DailyReport):
         c.showPage(); c.save(); return output.getvalue()
     except Exception: return generate_single_csv(report)
 
-def generate_pdf_fast_month(qs, period_text, title):
+def generate_pdf_fast_month(t63, t90, t110, period_text, title):
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
@@ -163,7 +132,7 @@ def generate_pdf_fast_month(qs, period_text, title):
         y = height - 120
         c.setFillColor(colors.HexColor("#9333EA")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
         c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 12); c.drawString(70, y+2, "Sr.No"); c.drawString(150, y+2, "Pipe Dia"); c.drawString(270, y+2, "Quantity"); c.drawString(390, y+2, "UNIT")
-        y -= 30; t63 = sum(r.qty_63mm for r in qs); t90 = sum(r.qty_90mm for r in qs); t110 = sum(r.qty_110mm for r in qs)
+        y -= 30
         c.setFont("Helvetica", 12)
         for idx, (dia, qty) in enumerate([("63MM", t63), ("90MM", t90), ("110MM", t110)], start=1):
             if idx % 2 == 0: c.setFillColor(colors.HexColor("#F5F3FF")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
@@ -171,16 +140,17 @@ def generate_pdf_fast_month(qs, period_text, title):
         y -= 10; c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
         c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 13); c.drawString(70, y+2, f"Grand Total: {t63+t90+t110} MTR")
         c.showPage(); c.save(); return output.getvalue()
-    except Exception: return generate_month_csv(qs, period_text, title)
+    except Exception: return generate_month_csv(t63, t90, t110, period_text, title)
 
 # ==========================================
-# PAGES - FAST VERSION
+# PAGES
 # ==========================================
 @ui.page("/")
 @ui.page("/login")
 def login_page():
     saved_email = app.storage.user.get("saved_email", "")
-    saved_password = app.storage.user.get("saved_password", "")
+    # saved_password HATAVI DIDHU - e j slow karse
+    
     with ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3"):
         with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0 border border-purple-400/30"):
             with ui.column().classes("w-full bg-gradient-to-r from-cyan-500 via-purple-600 to-fuchsia-600 p-5 items-center text-white"):
@@ -189,29 +159,65 @@ def login_page():
             with ui.column().classes("w-full p-5 bg-white gap-3"):
                 email_input = ui.input("Email ID", value=saved_email).props("outlined rounded dense").classes("w-full")
                 with email_input.add_slot("prepend"): ui.icon("mail", color="purple")
-                pass_input = ui.input("Password", value=saved_password, password=True, password_toggle_button=True).props("outlined rounded dense").classes("w-full")
+                pass_input = ui.input("Password", password=True, password_toggle_button=True).props("outlined rounded dense").classes("w-full")
                 with pass_input.add_slot("prepend"): ui.icon("lock", color="purple")
-                def handle_login():
-                    email = (email_input.value or "").strip(); pwd = pass_input.value or ""
-                    user = AppUser.objects.filter(email=email).first()
-                    if user and check_password(pwd, user.password):
-                        app.storage.user["logged_in_user_id"] = user.id; app.storage.user["saved_email"] = email; app.storage.user["saved_password"] = pwd
-                        ui.navigate.to("/home")
-                    else: ui.notify("Invalid Email ID or Password!", type="negative", position="top")
+                
+                login_btn = ui.button("Log In", icon="login").props("rounded no-caps").classes("w-full py-2.5 mt-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-base shadow-lg")
+                
+                async def handle_login():
+                    email = (email_input.value or "").strip()
+                    pwd = pass_input.value or ""
+                    if not email or not pwd:
+                        ui.notify("Enter Email & Password!", type="warning", position="top")
+                        return
+                    
+                    # LOADING BATAVO ETLE USER NE FAST LAGSE
+                    login_btn.props("loading")
+                    
+                    try:
+                        # DB nu kaam background ma - UI block nai thai
+                        def db_check():
+                            try:
+                                user = AppUser.objects.get(email=email)
+                                if check_password(pwd, user.password):
+                                    return user
+                            except AppUser.DoesNotExist:
+                                return None
+                            return None
+                        
+                        user = await ui.run.io_bound(db_check)
+                        
+                        if user:
+                            app.storage.user["logged_in_user_id"] = user.id
+                            app.storage.user["saved_email"] = email
+                            # app.storage.user["saved_password"] = pwd  # HATAVI DIDHU - FAST MATE
+                            ui.navigate.to("/home")
+                        else:
+                            ui.notify("Invalid Email ID or Password!", type="negative", position="top")
+                    finally:
+                        login_btn.props(remove="loading")
+
+                login_btn.on_click(handle_login)
+                
                 def handle_reset_password():
                     email = (email_input.value or "").strip()
-                    if not email: ui.notify("Please enter your Email ID first!", type="warning", position="top"); return
+                    if not email: 
+                        ui.notify("Please enter your Email ID first!", type="warning", position="top")
+                        return
                     user = AppUser.objects.filter(email=email).first()
-                    if not user: ui.notify("No account found with this Email ID.", type="negative", position="top"); return
+                    if not user: 
+                        ui.notify("No account found!", type="negative", position="top")
+                        return
                     reset_obj = PasswordResetToken.objects.create(user=user)
                     reset_link = f"{APP_BASE_URL}/reset-password?token={reset_obj.token}"
                     print(f"\n---> RESET LINK for {user.email}: {reset_link}\n")
-                    ui.notify("Reset link generated! Check terminal.", type="info", position="top")
-                ui.button("Log In", icon="login", on_click=handle_login).props("rounded no-caps").classes("w-full py-2.5 mt-1 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold text-base shadow-lg")
+                    ui.notify("Reset link generated! Check Render logs.", type="info", position="top")
+
                 ui.button("Reset Password", icon="key", on_click=handle_reset_password).props("flat no-caps").classes("w-full text-indigo-600 font-semibold text-sm")
                 ui.separator()
                 ui.button("Register! Create new account", icon="person_add", on_click=lambda: ui.navigate.to("/register")).props("outline rounded no-caps").classes("w-full text-emerald-600 font-bold text-sm border-emerald-500")
 
+                
 @ui.page("/register")
 def register_page():
     with ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3"):
@@ -239,7 +245,7 @@ def reset_password_page(token: str = ""):
     token_obj = PasswordResetToken.objects.filter(token=token).select_related("user").first()
     with ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3"):
         if not token_obj:
-            with ui.card().classes("p-5 rounded-2xl bg-white shadow-xl"): ui.label("Invalid or expired password reset link.").classes("text-red-600 text-base font-bold")
+            with ui.card().classes("p-5 rounded-2xl bg-white shadow-xl"): ui.label("Invalid or expired link.").classes("text-red-600 text-base font-bold")
             return
         user = token_obj.user
         container = ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl p-5 bg-white")
@@ -251,7 +257,7 @@ def reset_password_page(token: str = ""):
             def confirm_reset():
                 p_val = new_pwd.value or ""; rp_val = re_new_pwd.value or ""
                 if len(p_val) < 6: ui.notify("Password must be at least 6 characters!", type="negative", position="top"); return
-                if p_val != rp_val: ui.notify("Password and Retype password must be the same!", type="negative", position="top"); return
+                if p_val != rp_val: ui.notify("Password must be same!", type="negative", position="top"); return
                 user.password = make_password(p_val); user.save()
                 app.storage.user["saved_password"] = p_val; token_obj.delete()
                 container.clear()
@@ -278,16 +284,15 @@ def home_page():
                         with ui.menu_item(on_click=lambda: ui.navigate.to("/filter")).classes("hover:bg-purple-50 font-semibold"):
                             with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
             with ui.row().classes("w-full justify-center mb-2.5"):
-                title_input = ui.input(value=user.default_report_title).props("borderless dense input-class='text-center font-extrabold text-[13px] sm:text-base text-slate-900'").classes("title-pill w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
-
-            saved_areas = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True))
+                title_input = ui.input(value=user.default_report_title).props("borderless dense input-class='text-center font-extrabold text- sm:text-base text-slate-900'").classes("title-pill w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
+            saved_areas = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True)[:100])
             with ui.row().classes("w-full justify-end mb-2.5"):
                 area_select = ui.select(options=saved_areas, label="Enter Area *", with_input=True, new_value_mode="add-unique").props("outlined rounded dense color=purple").classes("w-44 sm:w-56 bg-indigo-50/60 font-semibold text-xs shadow-sm")
                 def on_area_change(e):
                     val = (e.value or "").strip()
                     if val:
                         SavedArea.objects.get_or_create(user=user, area_name=val)
-                        area_select.options = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True)); area_select.update()
+                        area_select.options = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True)[:100]); area_select.update()
                 area_select.on_value_change(on_area_change)
             with ui.row().classes("w-full justify-center items-center gap-1.5 mb-1.5"):
                 ui.icon("plumbing", color="purple", size="1.3rem"); ui.label("Pipe Sizes").classes("text-base sm:text-xl font-extrabold text-slate-800")
@@ -321,10 +326,10 @@ def home_page():
                 except Exception: selected_date = datetime.date.today()
                 area_val = (area_select.value or "").strip()
                 if not area_val:
-                    ui.notify("Please Enter Area! Ex: Laskana, Kamrej", type="warning", position="top"); return
+                    ui.notify("Please Enter Area!", type="warning", position="top"); return
                 SavedArea.objects.get_or_create(user=user, area_name=area_val)
                 current_title = (title_input.value or "").strip() or user.default_report_title
-                user.default_report_title = current_title; user.save()
+                user.default_report_title = current_title; user.save(update_fields=['default_report_title'])
                 DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110, price_sum=float(q63+q90+q110))
                 ui.notify(f"Saved! {area_val} - {selected_date.strftime('%d-%m-%Y')}", type="positive", position="top")
                 c63.value = ""; c90.value = ""; c110.value = ""; update_live_preview()
@@ -347,7 +352,7 @@ def profile_page():
                 with ui.row().classes("w-full justify-end gap-2"):
                     ui.button("Cancel", on_click=delete_dialog.close).props("outline rounded no-caps").classes("font-bold text-xs")
                     def confirm_delete():
-                        user.delete(); app.storage.user.clear(); delete_dialog.close(); ui.notify("Your account and data permanently deleted.", type="positive", position="top"); ui.timer(1.0, lambda: ui.navigate.to("/login"), once=True)
+                        user.delete(); app.storage.user.clear(); delete_dialog.close(); ui.notify("Account deleted.", type="positive", position="top"); ui.timer(1.0, lambda: ui.navigate.to("/login"), once=True)
                     ui.button("Delete", icon="delete_forever", on_click=confirm_delete).props("rounded no-caps").classes("bg-red-600 text-white font-bold text-xs")
             ui.button("Delete Account", icon="delete", on_click=delete_dialog.open).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-red-500 to-rose-600 text-white font-bold shadow-lg")
 
@@ -364,7 +369,7 @@ def filter_page():
         with ui.card().classes("w-full max-w-md rounded-3xl shadow-2xl bg-white p-3 sm:p-5 border-2 border-purple-200"):
             ui.button("Back", icon="arrow_back", on_click=lambda: ui.navigate.to("/home")).props("flat rounded no-caps").classes("text-indigo-700 font-bold")
             with ui.row().classes("w-full justify-center my-1.5"):
-                ui.label(user.default_report_title).classes("w-full px-2 py-1.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 text-slate-900 font-extrabold text-[13px] sm:text-base shadow-md border border-purple-300 text-center")
+                ui.label(user.default_report_title).classes("w-full px-2 py-1.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 text-slate-900 font-extrabold text- sm:text-base shadow-md border border-purple-300 text-center")
             with ui.grid(columns=3).classes("w-full gap-1.5 my-2.5 bg-purple-50 p-2 rounded-2xl border border-purple-200"):
                 date_options = {"": "Select Date", **{str(d): f"{d:02d}" for d in range(1, 32)}}
                 day_select = ui.select(options=date_options, value="", label="Select Date").props("outlined rounded dense color=purple").classes("w-full bg-white font-semibold text-xs")
@@ -375,39 +380,48 @@ def filter_page():
             def load_table_data():
                 table_container.clear()
                 sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
-                base_qs = DailyReport.objects.filter(user=user, report_date__month=sel_month, report_date__year=sel_year).order_by('-id')
+
+                # ===== FAST QUERY - DB MA J SUM =====
+                base_qs = DailyReport.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
+                
                 if not base_qs.exists():
                     with table_container:
                         with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
                             ui.icon("info", size="2.2rem", color="red"); ui.label("No Data Available").classes("text-sm font-extrabold text-red-700 mt-1")
                     return
+
                 if sel_day:
-                    qs = base_qs.filter(report_date__day=int(sel_day))
+                    qs = base_qs.filter(report_date__day=int(sel_day)).order_by('-id')
                     period_text = f"Date: {int(sel_day):02d} {months[sel_month]} {sel_year}"
                     with table_container:
                         if not qs.exists():
                             with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
                                 ui.icon("info", size="2.2rem", color="red"); ui.label("No Data").classes("text-sm font-extrabold text-red-700 mt-1")
                             return
-                        grand_total = sum(r.total_qty for r in qs)
+                        
+                        # FAST AGGREGATE
+                        agg = qs.aggregate(t=Sum('total_qty'))
+                        grand_total = agg['t'] or 0
+
                         with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                             ui.badge(period_text, color="purple").classes("text-xs font-bold px-2 py-1")
-                            ui.badge(f"Reports: {qs.count()} | Total: {grand_total} MTR", color="green").classes("text-[11px] font-bold px-2 py-1")
-                        for report in qs:
+                            ui.badge(f"Reports: {qs.count()} | Total: {grand_total} MTR", color="green").classes("text- font-bold px-2 py-1")
+                        for report in qs[:50]: # LIMIT 50 FOR SPEED
                             area_display = report.area_name or "No Area"
                             with ui.card().classes("report-patti w-full rounded-2xl border-2 border-purple-200 bg-gradient-to-r from-white to-purple-50 p-3 shadow-md").on("click", lambda r=report: ui.navigate.to(f"/report/{r.id}")):
                                 with ui.row().classes("w-full justify-between items-center"):
                                     with ui.row().classes("items-center gap-2"):
                                         ui.icon("location_on", color="purple", size="1.2rem"); ui.label(area_display).classes("font-extrabold text-sm text-indigo-900")
-                                    ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
+                                    ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-")
                                 ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
                                 with ui.row().classes("w-full justify-between items-center mt-1"):
-                                    ui.label(f"63:{report.qty_63mm} | 90:{report.qty_90mm} | 110:{report.qty_110mm}").classes("text-[11px] font-bold text-slate-600")
+                                    ui.label(f"63:{report.qty_63mm} | 90:{report.qty_90mm} | 110:{report.qty_110mm}").classes("text- font-bold text-slate-600")
                                     ui.label(f"Total: {report.total_qty} MTR").classes("text-xs font-extrabold text-emerald-600")
                 else:
-                    qs = base_qs
+                    # MONTHLY TOTAL - FASTEST
+                    agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'))
+                    t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0
                     period_text = f"Full Month: {months[sel_month]} {sel_year}"
-                    t63 = sum(r.qty_63mm for r in qs); t90 = sum(r.qty_90mm for r in qs); t110 = sum(r.qty_110mm for r in qs)
                     with table_container:
                         with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                             ui.badge(period_text, color="purple").classes("text-xs font-bold px-2 py-1")
@@ -420,13 +434,13 @@ def filter_page():
                                 ui.icon("download", size="2rem"); ui.label("Download Monthly Report").classes("font-extrabold text-base"); ui.label(period_text).classes("text-xs text-purple-100 text-center")
                             with ui.column().classes("w-full p-4 gap-2 bg-white"):
                                 def do_m_csv():
-                                    ui.download(generate_month_csv(qs, period_text, user.default_report_title), f"{period_text}_report.csv")
+                                    ui.download(generate_month_csv(t63, t90, t110, period_text, user.default_report_title), f"{period_text}_report.csv")
                                     month_download_dialog.close()
                                 def do_m_excel():
-                                    ui.download(generate_excel_fast_month(qs, period_text, user.default_report_title), f"{period_text}_report.xlsx")
+                                    ui.download(generate_excel_fast_month(t63, t90, t110, period_text, user.default_report_title), f"{period_text}_report.xlsx")
                                     month_download_dialog.close()
                                 def do_m_pdf():
-                                    ui.download(generate_pdf_fast_month(qs, period_text, user.default_report_title), f"{period_text}_report.pdf")
+                                    ui.download(generate_pdf_fast_month(t63, t90, t110, period_text, user.default_report_title), f"{period_text}_report.pdf")
                                     month_download_dialog.close()
                                 ui.button("As CSV", icon="table_view", on_click=do_m_csv).props("outline rounded no-caps").classes("w-full font-bold text-sm border-indigo-500 text-indigo-600")
                                 ui.button("As Excel", icon="description", on_click=do_m_excel).props("outline rounded no-caps").classes("w-full font-bold text-sm border-emerald-500 text-emerald-600")
@@ -485,8 +499,4 @@ def report_detail_page(report_id: int):
                     ui.button("Close", icon="close", on_click=download_dialog.close).props("rounded no-caps").classes("w-full bg-slate-200 text-slate-700 font-bold text-sm")
             ui.button("Download Report", icon="download", on_click=download_dialog.open).props("rounded no-caps").classes("w-full py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-base shadow-xl")
 
-print("\n========================================================")
-print(f"✅ FIXED | IP: {MOBILE_IP}:{PORT}")
-print("========================================================\n")
-
-ui.run(host="0.0.0.0", port=PORT, title="Site Daily Progress Report", storage_secret="my_persistent_secret_key_123", reload=False, show=False)
+ui.run(host="0.0.0.0", port=PORT, title="Site Daily Progress Report", storage_secret=STORAGE_SECRET, reload=False, show=False)
