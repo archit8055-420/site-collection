@@ -1,0 +1,8 @@
+nicegui
+django
+psycopg[binary]
+dj-database-url
+python-dotenv
+openpyxl
+pandas
+reportlab
