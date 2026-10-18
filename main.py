@@ -1,6 +1,6 @@
 """
-FINAL - DATE DESIGN REPAIR ONLY
-Image jevo pill design - white rounded with shadow
+FINAL - DATE DESIGN REPAIR ONLY + Render Fix
+Same design, only host=0.0.0.0 changed
 """
 import os, datetime, csv, io
 print("🚀 FINAL - Date Design Repair Loading...", flush=True)
@@ -162,8 +162,6 @@ ui.add_css("""
     .back-btn .q-btn__content { color: black !important; }
     .back-btn .q-icon { color: black !important; }
     .back-btn:hover { background-color: #b56a17 !important; color: black !important; }
-    
-    /* DATE REPAIR - Exact like image */
     .date-pill {
         background: white !important;
         border: 1.5px solid #e5e7eb !important;
@@ -310,7 +308,6 @@ def main_spa_page():
                 with ui.column().classes("w-full max-w-md items-center gap-2"):
                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                         ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-xs shadow-sm")
-                        # REPAIRED DATE DESIGN - Like image
                         today_str = datetime.date.today().isoformat()
                         with ui.row().classes("date-pill items-center justify-center"):
                             home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-xs font-bold")
@@ -465,7 +462,6 @@ def main_spa_page():
                                     rows = [{"sr_no": 1, "pipe_dia": "63MM", "quantity": t63, "unit": f"{t63} MTR"}, {"sr_no": 2, "pipe_dia": "90MM", "quantity": t90, "unit": f"{t90} MTR"}, {"sr_no": 3, "pipe_dia": "110MM", "quantity": t110, "unit": f"{t110} MTR"}]
                                     columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
                                     ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
-                                    
                                     with ui.dialog() as month_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                                         with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
                                             ui.label(f"📥 Download {period_text}").classes("font-extrabold text-xs text-white")
@@ -485,11 +481,9 @@ def main_spa_page():
                                                 data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.pdf")
                                                 month_download_dialog.close()
-
                                             ui.button("As CSV", icon="table_view", on_click=do_m_csv).props("outline rounded no-caps").classes("w-full font-bold text-sm border-blue-500 text-blue-600")
                                             ui.button("As Excel", icon="description", on_click=do_m_excel).props("outline rounded no-caps").classes("w-full font-bold text-sm border-green-500 text-green-600")
                                             ui.button("As PDF", icon="picture_as_pdf", on_click=do_m_pdf).props("outline rounded no-caps").classes("w-full font-bold text-sm border-red-500 text-red-600")
-
                                     ui.button("📥 Download", icon="download", on_click=month_download_dialog.open).props("rounded no-caps").classes("w-full mt-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-2.5 shadow-md")
 
                         day_select.on_value_change(lambda: load_table_data()); month_select.on_value_change(lambda: load_table_data()); year_select.on_value_change(lambda: load_table_data()); load_table_data()
@@ -502,12 +496,10 @@ def main_spa_page():
                         with ui.row().classes("w-full justify-between items-center mb-3"):
                             ui.button("Back", icon="arrow_back", on_click=show_filter).props("flat rounded no-caps dense").classes("back-btn text-xs")
                             ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="green").classes("font-bold text-xs")
-
                         with ui.column().classes("w-full rounded-2xl bg-gradient-to-r from-green-200 via-emerald-200 to-teal-200 p-3 border-2 border-green-300 shadow-md mb-3"):
                             with ui.row().classes("w-full items-center gap-2"):
                                 ui.icon("location_on", color="green"); ui.label(report.area_name or "No Area").classes("font-extrabold text-base text-green-900")
                                 ui.label("|").classes("text-slate-500"); ui.label(report.report_title).classes("font-bold text-sm text-slate-900 flex-1")
-
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0 mb-4"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("Sr.No").classes("py-2 text-xs"); ui.label("63MM").classes("py-2 text-xs border-x border-white/30"); ui.label("90MM").classes("py-2 text-xs border-r border-white/30"); ui.label("110MM").classes("py-2 text-xs")
@@ -516,17 +508,14 @@ def main_spa_page():
                             with ui.grid(columns=2).classes("w-full bg-gradient-to-r from-slate-900 via-green-900 to-slate-900 text-white text-center"):
                                 ui.label("Grand Total").classes("py-2.5 font-bold text-green-300 text-xs")
                                 ui.label(f"{report.total_qty} MTR").classes("py-2.5 font-extrabold text-cyan-300 text-sm")
-
                         with ui.column().classes("w-full bg-gray-50 rounded-xl p-3 border border-gray-200 mb-3"):
                             ui.label(f"📅 Date: {report.report_date.strftime('%d-%m-%Y')}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"📍 Area: {report.area_name}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"📄 Title: {report.report_title}").classes("text-xs font-bold text-slate-700")
-
                         with ui.dialog() as detail_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                             with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
                                 ui.label(f"📥 Download {report.area_name}").classes("font-extrabold text-xs text-white")
                                 ui.button(icon="close", on_click=detail_download_dialog.close).props("flat round dense color=white").classes("text-white bg-white/20")
-
                             with ui.column().classes("w-full p-4 gap-2 bg-white"):
                                 ui.label(f"Select format for {report.area_name} - {report.total_qty} MTR:").classes("text-xs font-bold text-gray-600 text-center w-full mb-1")
                                 def do_csv():
@@ -538,11 +527,9 @@ def main_spa_page():
                                 def do_pdf():
                                     ui.download(generate_single_pdf(report), f"{report.area_name}_{report.report_date}_report.pdf")
                                     detail_download_dialog.close()
-
                                 ui.button("As CSV", icon="table_view", on_click=do_csv).props("outline rounded no-caps").classes("w-full font-bold text-sm border-blue-500 text-blue-600 py-2")
                                 ui.button("As Excel", icon="description", on_click=do_excel).props("outline rounded no-caps").classes("w-full font-bold text-sm border-green-500 text-green-600 py-2")
                                 ui.button("As PDF", icon="picture_as_pdf", on_click=do_pdf).props("outline rounded no-caps").classes("w-full font-bold text-sm border-red-500 text-red-600 py-2")
-
                         ui.button("📥 Download", icon="download", on_click=detail_download_dialog.open).props("rounded no-caps").classes("w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-extrabold text-base shadow-xl")
 
         def build_profile():
@@ -596,7 +583,6 @@ def main_spa_page():
                 ui.notify("Enter Email & Password!", type="warning", position="top")
                 return
             pwd_key = hashlib.sha256(f"{email}:{pwd}".encode()).hexdigest()
-
             if pwd_key in CACHE["pwd_verified"]:
                 user_id = CACHE["pwd_verified"][pwd_key]
                 user = CACHE["users"].get(email)
@@ -611,10 +597,8 @@ def main_spa_page():
                     app.storage.user["saved_password"] = pwd
                     show_home()
                     return
-
             status_label.set_text("⏳ Checking...")
             login_btn.props("loading")
-
             def get_user_quick():
                 if email in CACHE["users"]:
                     return CACHE["users"][email]
@@ -622,21 +606,17 @@ def main_spa_page():
                     return AppUser.objects.get(email=email)
                 except AppUser.DoesNotExist:
                     return None
-
             quick_user = await run.io_bound(get_user_quick)
-
             if not quick_user:
                 status_label.set_text("❌ User not found")
                 ui.notify("User not found! Register first.", type="negative", position="top")
                 login_btn.props(remove="loading")
                 return
-
             state["user"] = quick_user
             app.storage.user["saved_email"] = email
             app.storage.user["saved_password"] = pwd
             show_home()
             login_btn.props(remove="loading")
-
             async def background_verify():
                 def verify():
                     return check_password(pwd, quick_user.password)
@@ -650,12 +630,10 @@ def main_spa_page():
                     await run.io_bound(lambda: time.sleep(0.8))
                     show_login_as_logout()
                     status_label.set_text("❌ Invalid password")
-
             ui.timer(0.1, lambda: background_verify(), once=True)
 
         login_btn.on_click(handle_login)
         reg_btn.on_click(show_register)
-
         print("🔒 Always Login First - Date Repair", flush=True)
         show_login()
 
@@ -664,13 +642,8 @@ def health_check():
     return {"status": "ok", "mode": "Date Design Repair", "cache": {"users": len(CACHE["users"]), "pwd": len(CACHE["pwd_verified"])}}
 
 if __name__ in {"__main__", "__mp_main__"}:
-    print(f"🚀 Date Design Repaired!", flush=True)
-    for try_port in [PORT, 8081, 8082, 8000, 3000]:
-        try:
-            print(f"🔍 Trying port {try_port}...", flush=True)
-            ui.run(host="127.0.0.1", port=try_port, title="Date Repair", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
-            break
-        except OSError as e:
-            print(f"❌ Port {try_port} busy: {e}", flush=True); continue
-        except Exception as e:
-            print(f"❌ Error:"); __import__("traceback").print_exc(); continue
+    print(f"🚀 Date Design Repaired! Starting on 0.0.0.0:{PORT}", flush=True)
+    # CRITICAL FIX for Render: Must bind to 0.0.0.0, not 127.0.0.1
+    # This allows Render to detect open port and avoids "Port scan timeout"
+    # Works on any PC/Mobile because Render forwards public traffic to 0.0.0.0
+    ui.run(host="0.0.0.0", port=PORT, title="Date Repair", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
