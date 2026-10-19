@@ -1,150 +1,68 @@
 """
-FIXED: SECURE LOGIN + NO SAVED POPUP + TITLE PERSIST + CLICKABLE PATTI + EDIT/DELETE
-- Email + Password both correct -> only then Home
-- One letter wrong -> immediately Invalid Password, no Home
-- Saved popup removed
+FORGOT PASSWORD - REAL EMAIL + 6 DIGIT PASSWORD ONLY
+- Site password: exactly 6 digits (e.g., 123456)
+- Gmail 16-digit App Password is only for sending email (backend), not for user
 """
-import os, datetime, csv, io
-print("🚀 Secure Login Fix Loading...", flush=True)
+import os, datetime, csv, io, secrets, hashlib, time, smtplib, ssl
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+print("🚀 6-DIGIT PASSWORD + REAL EMAIL Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 from nicegui import ui, app, run
 
-CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
+CACHE = {"users": {}, "areas": {}, "pwd_verified": {}, "reset_tokens": {}}
 
 from db_setup import init_django
 init_django()
 from models_app.models import AppUser, SavedArea, DailyReport
 from django.contrib.auth.hashers import make_password, check_password
 from django.db.models import Sum
-import hashlib, time
 
 PORT = int(os.getenv("PORT", "8080"))
 STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
 
-def generate_single_csv(report):
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([report.report_title])
-    writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}"])
-    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-    writer.writerow([1, "63MM", report.qty_63mm, f"{report.qty_63mm} MTR"])
-    writer.writerow([2, "90MM", report.qty_90mm, f"{report.qty_90mm} MTR"])
-    writer.writerow([3, "110MM", report.qty_110mm, f"{report.qty_110mm} MTR"])
-    writer.writerow([])
-    writer.writerow(["Grand Total", "", report.total_qty, f"{report.total_qty} MTR"])
-    return output.getvalue().encode("utf-8")
-
-def generate_single_excel(report):
+def send_reset_email(to_email, username, reset_link):
+    host = os.getenv("EMAIL_HOST", "")
+    port = int(os.getenv("EMAIL_PORT", "587"))
+    user = os.getenv("EMAIL_USER", "")
+    pwd = os.getenv("EMAIL_PASSWORD", "")
+    from_email = os.getenv("EMAIL_FROM", user)
+    if not host or not user or not pwd:
+        print(f"⚠️ EMAIL NOT CONFIGURED - Would send to {to_email}: {reset_link}", flush=True)
+        return False, "Email not configured. Set EMAIL_HOST, EMAIL_USER, EMAIL_PASSWORD in Render."
     try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-        wb = Workbook(); ws = wb.active; ws.title = "Report"
-        thin_border = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        header_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
-        header_font = Font(bold=True, color="FFFFFF", size=11)
-        ws.merge_cells('A1:D1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.merge_cells('A2:D2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name or 'No Area'}"; ws['A2'].font = Font(bold=True, size=10); ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-        for col in range(1,5):
-            cell = ws.cell(row=4, column=col); cell.fill = header_fill; cell.font = header_font; cell.alignment = Alignment(horizontal='center', vertical='center'); cell.border = thin_border
-        for idx, (dia, qty) in enumerate([("63MM", report.qty_63mm), ("90MM", report.qty_90mm), ("110MM", report.qty_110mm)], start=1):
-            ws.append([idx, dia, qty, f"{qty} MTR"]); r = ws.max_row
-            for c in range(1,5): ws.cell(row=r, column=c).alignment = Alignment(horizontal='center', vertical='center'); ws.cell(row=r, column=c).border = thin_border
-        ws.append([]); ws.append(["", "", "Grand Total", f"{report.total_qty} MTR"])
-        r = ws.max_row
-        for c in range(1,5): ws.cell(row=r, column=c).font = Font(bold=True); ws.cell(row=r, column=c).alignment = Alignment(horizontal='center', vertical='center'); ws.cell(row=r, column=c).border = thin_border
-        ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 15; ws.column_dimensions['C'].width = 12; ws.column_dimensions['D'].width = 15
-        output = io.BytesIO(); wb.save(output); return output.getvalue()
-    except Exception:
-        return generate_single_csv(report)
+        msg = MIMEMultipart()
+        msg['From'] = from_email
+        msg['To'] = to_email
+        msg['Subject'] = "Reset Your Password - Site Collection"
+        body = f"Hello {username}, Reset link (6-digit password): {reset_link} Valid 15 min."
+        html_body = f"""
+<html><body style="font-family: Arial; padding:20px; background:#f5f5f5;">
+<div style="max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px;">
+<h2 style="color:#059669;">Welcome {username}!</h2>
+<p>Reset your site password (6-digit only) for: <b>{to_email}</b></p>
+<a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:12px 24px; text-decoration:none; border-radius:9999px; font-weight:bold;">Reset Password (6-digit)</a>
+<p style="font-size:11px; color:#999; word-break:break-all; margin-top:15px;">{reset_link}</p>
+<p style="font-size:11px; color:#666;">New password must be exactly 6 digits (e.g., 123456). Valid 15 min.</p>
+</div></body></html>
+"""
+        msg.attach(MIMEText(body, 'plain'))
+        msg.attach(MIMEText(html_body, 'html'))
+        context = ssl.create_default_context()
+        with smtplib.SMTP(host, port) as server:
+            server.starttls(context=context)
+            server.login(user, pwd)
+            server.sendmail(from_email, to_email, msg.as_string())
+        print(f"✅ RESET EMAIL SENT to {to_email}", flush=True)
+        return True, "Email sent!"
+    except Exception as e:
+        print(f"❌ EMAIL FAILED to {to_email}: {e}", flush=True)
+        return False, str(e)
 
-def generate_single_pdf(report):
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-        from reportlab.lib import colors
-        output = io.BytesIO(); c = canvas.Canvas(output, pagesize=A4); width, height = A4
-        c.setFillColor(colors.HexColor("#10B981")); c.rect(0, height-80, width, 80, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 18); c.drawCentredString(width/2, height-35, report.report_title)
-        c.setFont("Helvetica", 11); c.drawCentredString(width/2, height-55, f"Area: {report.area_name or 'No Area'} | Date: {report.report_date.strftime('%d-%m-%Y')}")
-        y = height - 120
-        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 12); c.drawString(70, y+2, "Sr.No"); c.drawString(150, y+2, "Pipe Dia"); c.drawString(270, y+2, "Quantity"); c.drawString(390, y+2, "UNIT")
-        y -= 30; c.setFont("Helvetica", 12)
-        for idx, (dia, qty) in enumerate([("63MM", report.qty_63mm), ("90MM", report.qty_90mm), ("110MM", report.qty_110mm)], start=1):
-            if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
-            c.setFillColor(colors.black); c.drawString(70, y, str(idx)); c.drawString(150, y, dia); c.drawString(270, y, str(qty)); c.drawString(390, y, f"{qty} MTR"); y -= 22
-        y -= 10; c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 13); c.drawString(70, y+2, f"Grand Total: {report.total_qty} MTR")
-        c.showPage(); c.save(); return output.getvalue()
-    except Exception:
-        return generate_single_csv(report)
-
-def generate_month_csv(title, period_text, t63, t90, t110):
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow([title])
-    writer.writerow([period_text])
-    writer.writerow([f"Generated: {datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')}"])
-    writer.writerow([])
-    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-    writer.writerow([1, "63MM", t63, f"{t63} MTR"])
-    writer.writerow([2, "90MM", t90, f"{t90} MTR"])
-    writer.writerow([3, "110MM", t110, f"{t110} MTR"])
-    writer.writerow([])
-    writer.writerow(["Grand Total", "", t63+t90+t110, f"{t63+t90+t110} MTR"])
-    return output.getvalue().encode("utf-8")
-
-def generate_month_excel(title, period_text, t63, t90, t110):
-    try:
-        from openpyxl import Workbook
-        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-        wb = Workbook(); ws = wb.active; ws.title = "Monthly Report"
-        thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
-        hdr_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
-        hdr_font = Font(bold=True, color="FFFFFF", size=11)
-        ws.merge_cells('A1:D1'); ws['A1'] = title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.merge_cells('A2:D2'); ws['A2'] = period_text; ws['A2'].font = Font(bold=True, size=11); ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.merge_cells('A3:D3'); ws['A3'] = f"Generated: {datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')}"; ws['A3'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.append([])
-        ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-        r = ws.max_row
-        for col in range(1,5):
-            cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center', vertical='center'); cell.border = thin
-        for idx, (dia, qty) in enumerate([("63MM", t63), ("90MM", t90), ("110MM", t110)], start=1):
-            ws.append([idx, dia, qty, f"{qty} MTR"])
-            rr = ws.max_row
-            for col in range(1,5): ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center', vertical='center'); ws.cell(row=rr, column=col).border = thin
-        ws.append([])
-        ws.append(["", "", "Grand Total", f"{t63+t90+t110} MTR"])
-        rr = ws.max_row
-        for col in range(1,5): ws.cell(row=rr, column=col).font = Font(bold=True); ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center', vertical='center'); ws.cell(row=rr, column=col).border = thin
-        ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 15; ws.column_dimensions['C'].width = 12; ws.column_dimensions['D'].width = 18
-        out = io.BytesIO(); wb.save(out); return out.getvalue()
-    except Exception:
-        return generate_month_csv(title, period_text, t63, t90, t110)
-
-def generate_month_pdf(title, period_text, t63, t90, t110):
-    try:
-        from reportlab.lib.pagesizes import A4
-        from reportlab.pdfgen import canvas
-        from reportlab.lib import colors
-        output = io.BytesIO(); c = canvas.Canvas(output, pagesize=A4); w, h = A4
-        c.setFillColor(colors.HexColor("#10B981")); c.rect(0, h-80, w, 80, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 16); c.drawCentredString(w/2, h-35, title)
-        c.setFont("Helvetica", 10); c.drawCentredString(w/2, h-55, period_text)
-        y = h - 120
-        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11); c.drawString(70, y+2, "Sr.No"); c.drawString(150, y+2, "Pipe Dia"); c.drawString(270, y+2, "Quantity"); c.drawString(390, y+2, "UNIT")
-        y -= 30; c.setFont("Helvetica", 11)
-        for idx, (dia, qty) in enumerate([("63MM", t63), ("90MM", t90), ("110MM", t110)], start=1):
-            if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
-            c.setFillColor(colors.black); c.drawString(70, y, str(idx)); c.drawString(150, y, dia); c.drawString(270, y, str(qty)); c.drawString(390, y, f"{qty} MTR"); y -= 22
-        y -= 10; c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 12); c.drawString(70, y+2, f"Grand Total: {t63+t90+t110} MTR")
-        c.showPage(); c.save(); return output.getvalue()
-    except Exception:
-        return generate_month_csv(title, period_text, t63, t90, t110)
+def is_valid_6digit(pwd):
+    """Check if password is exactly 6 digits"""
+    return pwd and len(pwd) == 6 and pwd.isdigit()
 
 ui.add_css("""
     .spa-hidden { display: none !important; }
@@ -152,84 +70,97 @@ ui.add_css("""
     .report-patti:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16,185,129,0.2); border-color: #10B981 !important; }
     .editable-area .q-field__control { min-height: 48px !important; border-radius: 12px !important; }
     .editable-area input { font-weight: 700 !important; font-size: 14px !important; }
-    .back-btn {
-        background-color: #d4821e !important;
-        color: black !important;
-        border: 2px solid #b56a17 !important;
-        border-radius: 20px !important;
-        font-weight: bold !important;
-    }
+    .back-btn { background-color: #d4821e !important; color: black !important; border: 2px solid #b56a17 !important; border-radius: 20px !important; font-weight: bold !important; }
     .back-btn .q-btn__content { color: black !important; }
     .back-btn .q-icon { color: black !important; }
-    .date-pill {
-        background: white !important;
-        border: 1.5px solid #e5e7eb !important;
-        border-radius: 9999px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
-        padding: 6px 16px !important;
-        display: flex !important;
-        align-items: center !important;
-        gap: 8px !important;
-        min-width: 145px !important;
-    }
-    .date-pill input {
-        border: none !important;
-        outline: none !important;
-        font-weight: 700 !important;
-        font-size: 13px !important;
-        color: #1f2937 !important;
-        background: transparent !important;
-        width: 100px !important;
-        text-align: center !important;
-        cursor: pointer !important;
-    }
-    .date-pill .q-field__control {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        min-height: auto !important;
-        height: auto !important;
-        padding: 0 !important;
-    }
-    .date-pill .q-field__control:before,
-    .date-pill .q-field__control:after {
-        display: none !important;
-    }
-    .profile-card {
-        background: white !important;
-        border-radius: 24px !important;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important;
-        border: 1.5px solid #e0f2e9 !important;
-    }
-    .delete-btn {
-        background: white !important;
-        color: #dc2626 !important;
-        border: 1.5px solid #fecaca !important;
-        border-radius: 9999px !important;
-        font-weight: 700 !important;
-    }
-    .edit-mini-btn {
-        background: white !important;
-        color: #2563eb !important;
-        border: 1.2px solid #bfdbfe !important;
-        border-radius: 12px !important;
-        font-weight: 700 !important;
-        font-size: 11px !important;
-    }
-    .del-mini-btn {
-        background: white !important;
-        color: #dc2626 !important;
-        border: 1.2px solid #fecaca !important;
-        border-radius: 12px !important;
-        font-weight: 700 !important;
-        font-size: 11px !important;
-    }
+    .date-pill { background: white !important; border: 1.5px solid #e5e7eb !important; border-radius: 9999px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important; padding: 6px 16px !important; display: flex !important; align-items: center !important; gap: 8px !important; min-width: 145px !important; }
+    .date-pill input { border: none !important; outline: none !important; font-weight: 700 !important; font-size: 13px !important; color: #1f2937 !important; background: transparent !important; width: 100px !important; text-align: center !important; cursor: pointer !important; }
+    .date-pill .q-field__control { background: transparent !important; border: none !important; box-shadow: none !important; min-height: auto !important; height: auto !important; padding: 0 !important; }
+    .date-pill .q-field__control:before, .date-pill .q-field__control:after { display: none !important; }
+    .profile-card { background: white !important; border-radius: 24px !important; box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important; border: 1.5px solid #e0f2e9 !important; }
+    .delete-btn { background: white !important; color: #dc2626 !important; border: 1.5px solid #fecaca !important; border-radius: 9999px !important; font-weight: 700 !important; }
+    .edit-mini-btn { background: white !important; color: #2563eb !important; border: 1.2px solid #bfdbfe !important; border-radius: 12px !important; font-weight: 700 !important; font-size: 11px !important; }
+    .del-mini-btn { background: white !important; color: #dc2626 !important; border: 1.2px solid #fecaca !important; border-radius: 12px !important; font-weight: 700 !important; font-size: 11px !important; }
     .patti-click-area { cursor: pointer; }
+    .forgot-link { color: #2563eb !important; font-weight: 700 !important; font-size: 13px !important; cursor: pointer !important; }
+    .forgot-link:hover { text-decoration: underline !important; color: #1d4ed8 !important; }
 """, shared=True)
+
+@ui.page("/reset")
+def reset_page_with_query():
+    try:
+        request = ui.context.client.request
+        token = request.query_params.get("token", "")
+        if not token:
+            token = str(request.url).split("token=")[-1].split("&")[0] if "token=" in str(request.url) else ""
+    except Exception:
+        token = ""
+    return build_reset_content(token)
+
+@ui.page("/reset/{token}")
+def reset_page_with_path(token: str):
+    return build_reset_content(token)
+
+def build_reset_content(token: str):
+    with ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3"):
+        with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
+            with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 p-5 items-center text-white"):
+                ui.icon("lock_reset", size="2.5rem")
+                ui.label("Reset Password (6-digit)").classes("text-xl font-extrabold")
+            with ui.column().classes("w-full p-5 bg-white gap-3") as content_col:
+                if not token or token not in CACHE["reset_tokens"]:
+                    ui.icon("error", size="2rem", color="red")
+                    ui.label("Invalid or Expired Link!").classes("text-red-600 font-bold text-center w-full")
+                    ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-3 bg-blue-600 text-white font-bold")
+                    return
+                data = CACHE["reset_tokens"][token]
+                if time.time() - data["created_at"] > 900:
+                    CACHE["reset_tokens"].pop(token, None)
+                    ui.icon("timer_off", size="2rem", color="red")
+                    ui.label("Link Expired! (15 min over)").classes("text-red-600 font-bold text-center w-full")
+                    ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-2 bg-blue-600 text-white font-bold")
+                    return
+                email = data["email"]
+                try:
+                    user = AppUser.objects.get(email=email)
+                except:
+                    ui.label("User not found!").classes("text-red-600 font-bold text-center w-full")
+                    ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-2 bg-blue-600 text-white font-bold")
+                    return
+                ui.label(f"Welcome {user.username}").classes("text-lg font-extrabold text-slate-900 text-center w-full")
+                ui.label(f"For this email: {email}").classes("text-xs font-bold text-slate-600 text-center w-full break-all")
+                ui.label("Change Password (6-digit only)").classes("text-sm font-bold text-indigo-700 mt-2 w-full text-center")
+                new_pwd = ui.input("Enter new password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                re_new_pwd = ui.input("Re-enter new password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                status_lbl = ui.label("").classes("text-xs font-bold text-center w-full")
+                def do_confirm_reset():
+                    p1 = (new_pwd.value or "").strip()
+                    p2 = (re_new_pwd.value or "").strip()
+                    if not is_valid_6digit(p1):
+                        status_lbl.set_text("❌ Password must be exactly 6 digits! (e.g., 123456)")
+                        return
+                    if p1 != p2:
+                        status_lbl.set_text("❌ Both passwords not same!")
+                        return
+                    try:
+                        user.password = make_password(p1)
+                        user.save(update_fields=['password'])
+                        CACHE["users"].pop(email, None)
+                        CACHE["pwd_verified"] = {k:v for k,v in CACHE["pwd_verified"].items() if v != user.id}
+                        CACHE["reset_tokens"].pop(token, None)
+                        content_col.clear()
+                        with content_col:
+                            ui.icon("check_circle", size="3rem", color="green")
+                            ui.label("Successfully changed password!").classes("text-base font-extrabold text-green-700 text-center w-full mt-2")
+                            ui.label("You can now go to app or site and log in with 6-digit password").classes("text-xs font-bold text-slate-600 text-center w-full mt-1")
+                            ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 shadow-lg")
+                    except Exception as e:
+                        status_lbl.set_text(f"❌ Failed: {e}")
+                ui.button("Confirm (6-digit)", icon="check", on_click=do_confirm_reset).props("rounded no-caps").classes("w-full mt-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 shadow-lg")
 
 @ui.page("/")
 def main_spa_page():
-    print("🚀 Secure Login Fix Loading", flush=True)
+    print("🚀 6-DIGIT PASSWORD Flow Loading", flush=True)
     state = {"user": None, "selected_report": None}
     with ui.column().classes("w-full min-h-screen p-0 m-0 gap-0") as root:
         login_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3")
@@ -238,21 +169,24 @@ def main_spa_page():
                 with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-green-600 to-teal-600 p-4 items-center text-white"):
                     ui.icon("bolt", size="2.5rem")
                     ui.label("FINAL DIALOG + EDITABLE").classes("text-xl font-extrabold")
-                    ui.label("⚡ Secure Login").classes("text-xs")
+                    ui.label("⚡ 6-Digit Secure Login").classes("text-xs")
                 with ui.column().classes("w-full p-5 bg-white gap-3"):
                     saved_email = app.storage.user.get("saved_email", "")
                     saved_pwd = app.storage.user.get("saved_password", "")
                     email_input = ui.input("Email ID", value=saved_email).props("outlined rounded dense").classes("w-full")
-                    pass_input = ui.input("Password", value=saved_pwd, password=True, password_toggle_button=True).props("outlined rounded dense").classes("w-full")
+                    pass_input = ui.input("Password (6 digits)", value=saved_pwd, placeholder="6 digits only", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
                     login_btn = ui.button("⚡ Log In", icon="bolt").props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg")
                     status_label = ui.label("").classes("text-xs text-center font-bold text-green-600")
-                    reg_btn = ui.button("Register New Account", icon="person_add").props("outline rounded no-caps").classes("w-full text-emerald-600 font-bold text-sm border-emerald-500")
+                    with ui.row().classes("w-full justify-center mt-1"):
+                        forgot_link = ui.label("Forgot password?").classes("forgot-link")
+                    reg_btn = ui.button("Register New Account", icon="person_add").props("outline rounded no-caps").classes("w-full text-emerald-600 font-bold text-sm border-emerald-500 mt-2")
 
         home_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 py-2 px-1.5 sm:px-4 items-center spa-hidden")
         filter_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 py-2 px-1.5 sm:px-4 items-center spa-hidden")
         filter_detail_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 py-2 px-1.5 sm:px-4 items-center spa-hidden")
         profile_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 p-3 items-center justify-center spa-hidden")
         register_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3 spa-hidden")
+        forgot_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3 spa-hidden")
 
         def show_login():
             state["user"] = None
@@ -262,6 +196,7 @@ def main_spa_page():
             filter_detail_view.classes(add="spa-hidden")
             profile_view.classes(add="spa-hidden")
             register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
 
         def show_login_as_logout():
             state["user"] = None
@@ -276,6 +211,7 @@ def main_spa_page():
             filter_detail_view.classes(add="spa-hidden")
             profile_view.classes(add="spa-hidden")
             register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
 
         def show_home():
             login_view.classes(add="spa-hidden")
@@ -284,6 +220,7 @@ def main_spa_page():
             filter_detail_view.classes(add="spa-hidden")
             profile_view.classes(add="spa-hidden")
             register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
             build_home()
 
         def show_filter():
@@ -293,6 +230,7 @@ def main_spa_page():
             filter_detail_view.classes(add="spa-hidden")
             profile_view.classes(add="spa-hidden")
             register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
             build_filter()
 
         def show_filter_detail(report):
@@ -303,6 +241,7 @@ def main_spa_page():
             filter_detail_view.classes(remove="spa-hidden")
             profile_view.classes(add="spa-hidden")
             register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
             build_filter_detail(report)
 
         def show_profile():
@@ -312,6 +251,7 @@ def main_spa_page():
             filter_detail_view.classes(add="spa-hidden")
             profile_view.classes(remove="spa-hidden")
             register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
             build_profile()
 
         def show_register():
@@ -321,6 +261,63 @@ def main_spa_page():
             filter_detail_view.classes(add="spa-hidden")
             profile_view.classes(add="spa-hidden")
             register_view.classes(remove="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+
+        def show_forgot():
+            login_view.classes(add="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(remove="spa-hidden")
+            build_forgot()
+
+        def build_forgot():
+            forgot_view.clear()
+            with forgot_view:
+                with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
+                    with ui.column().classes("w-full bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 p-5 items-center text-white"):
+                        ui.icon("lock_reset", size="2.5rem")
+                        ui.label("Forgot Password").classes("text-xl font-extrabold")
+                        ui.label("Enter your Email ID (6-digit reset)").classes("text-xs")
+                    with ui.column().classes("w-full p-5 bg-white gap-3"):
+                        forgot_email = ui.input("Email ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
+                        forgot_status = ui.label("").classes("text-xs font-bold text-center w-full")
+                        link_display = ui.column().classes("w-full gap-2")
+                        def send_reset_link():
+                            email = (forgot_email.value or "").strip()
+                            if not email:
+                                forgot_status.set_text("❌ Enter Email ID!")
+                                return
+                            try:
+                                user = AppUser.objects.get(email=email)
+                            except AppUser.DoesNotExist:
+                                forgot_status.set_text("❌ Email not registered!")
+                                return
+                            token = secrets.token_urlsafe(32)
+                            CACHE["reset_tokens"][token] = {"email": email, "created_at": time.time()}
+                            base_url = os.getenv("RENDER_EXTERNAL_URL", os.getenv("BASE_URL", "https://site-collection.onrender.com"))
+                            if "localhost" in base_url or not base_url:
+                                base_url = "https://site-collection.onrender.com"
+                            reset_link = f"{base_url}/reset/{token}"
+                            success, msg = send_reset_email(email, user.username, reset_link)
+                            if success:
+                                forgot_status.set_text("✅ Reset link sent to your Email! (6-digit new password, 15 min valid)")
+                                link_display.clear()
+                                with link_display:
+                                    ui.label("Check inbox & spam folder.").classes("text-xs font-bold text-green-600 text-center w-full mt-2")
+                            else:
+                                forgot_status.set_text(f"⚠️ {msg} - Showing link below")
+                                link_display.clear()
+                                with link_display:
+                                    ui.label("Email not configured - Your reset link (6-digit):").classes("text-[10px] font-bold text-slate-500 text-center w-full mt-2")
+                                    with ui.card().classes("w-full p-2 bg-blue-50 border border-blue-200 rounded-xl"):
+                                        ui.label(reset_link).classes("text-[10px] font-bold text-blue-700 break-all w-full")
+                                    ui.button("Open Reset Page", icon="open_in_new", on_click=lambda: ui.navigate.to(reset_link)).props("rounded no-caps dense").classes("w-full bg-blue-600 text-white font-bold text-xs mt-2")
+                            print(f"🔑 RESET LINK for {email}: {reset_link}", flush=True)
+                        ui.button("Send Reset Link (6-digit)", icon="send", on_click=send_reset_link).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
+                        ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
 
         def build_home():
             home_view.clear()
@@ -335,7 +332,6 @@ def main_spa_page():
                 user = fresh_user
             except Exception:
                 pass
-
             with home_view:
                 with ui.column().classes("w-full max-w-md items-center gap-2"):
                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
@@ -365,7 +361,6 @@ def main_spa_page():
                                 except Exception:
                                     pass
                             title_input.on_value_change(save_title_persist)
-
                         def get_areas():
                             if user.id in CACHE["areas"]:
                                 return CACHE["areas"][user.id]
@@ -441,7 +436,6 @@ def main_spa_page():
                                 user.save(update_fields=['default_report_title'])
                                 CACHE["users"][user.email] = user
                             DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110, price_sum=float(q63+q90+q110))
-                            # NO POPUP HERE - Removed as per request
                             c63.value = ""; c90.value = ""; c110.value = ""; area_input.value = ""; update_live_preview()
                             get_areas(); refresh_suggestions()
                         ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
@@ -588,31 +582,6 @@ def main_spa_page():
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110} MTR", color="green").classes("text-xs font-bold px-2 py-1")
-                                    rows = [{"sr_no": 1, "pipe_dia": "63MM", "quantity": t63, "unit": f"{t63} MTR"}, {"sr_no": 2, "pipe_dia": "90MM", "quantity": t90, "unit": f"{t90} MTR"}, {"sr_no": 3, "pipe_dia": "110MM", "quantity": t110, "unit": f"{t110} MTR"}]
-                                    columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
-                                    ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
-                                    with ui.dialog() as month_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
-                                        with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
-                                            ui.label(f"📥 Download {period_text}").classes("font-extrabold text-xs text-white")
-                                            ui.button(icon="close", on_click=month_download_dialog.close).props("flat round dense color=white").classes("text-white")
-                                        with ui.column().classes("w-full p-4 gap-2 bg-white"):
-                                            ui.label(f"{period_text} - {t63+t90+t110} MTR").classes("text-xs font-bold text-green-700 text-center w-full mb-1")
-                                            def do_m_csv():
-                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110)
-                                                ui.download(data, f"{period_text.replace(' ', '_')}_report.csv")
-                                                month_download_dialog.close()
-                                            def do_m_excel():
-                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110)
-                                                ui.download(data, f"{period_text.replace(' ', '_')}_report.xlsx")
-                                                month_download_dialog.close()
-                                            def do_m_pdf():
-                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110)
-                                                ui.download(data, f"{period_text.replace(' ', '_')}_report.pdf")
-                                                month_download_dialog.close()
-                                            ui.button("As CSV", icon="table_view", on_click=do_m_csv).props("outline rounded").classes("w-full font-bold text-sm border-blue-500 text-blue-600")
-                                            ui.button("As Excel", icon="description", on_click=do_m_excel).props("outline rounded").classes("w-full font-bold text-sm border-green-500 text-green-600")
-                                            ui.button("As PDF", icon="picture_as_pdf", on_click=do_m_pdf).props("outline rounded").classes("w-full font-bold text-sm border-red-500 text-red-600")
-                                    ui.button("📥 Download", icon="download", on_click=month_download_dialog.open).props("rounded no-caps").classes("w-full mt-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-2.5 shadow-md")
                         day_select.on_value_change(lambda: load_table_data()); month_select.on_value_change(lambda: load_table_data()); year_select.on_value_change(lambda: load_table_data()); load_table_data()
 
         def build_filter_detail(report):
@@ -635,29 +604,6 @@ def main_spa_page():
                             with ui.grid(columns=2).classes("w-full bg-gradient-to-r from-slate-900 via-green-900 to-slate-900 text-white text-center"):
                                 ui.label("Grand Total").classes("py-2.5 font-bold text-green-300 text-xs")
                                 ui.label(f"{report.total_qty} MTR").classes("py-2.5 font-extrabold text-cyan-300 text-sm")
-                        with ui.column().classes("w-full bg-gray-50 rounded-xl p-3 border border-gray-200 mb-3"):
-                            ui.label(f"📅 Date: {report.report_date.strftime('%d-%m-%Y')}").classes("text-xs font-bold text-slate-700")
-                            ui.label(f"📍 Area: {report.area_name}").classes("text-xs font-bold text-slate-700")
-                            ui.label(f"📄 Title: {report.report_title}").classes("text-xs font-bold text-slate-700")
-                        with ui.dialog() as detail_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
-                            with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
-                                ui.label(f"📥 Download {report.area_name}").classes("font-extrabold text-xs text-white")
-                                ui.button(icon="close", on_click=detail_download_dialog.close).props("flat round dense color=white").classes("text-white bg-white/20")
-                            with ui.column().classes("w-full p-4 gap-2 bg-white"):
-                                ui.label(f"Select format for {report.area_name} - {report.total_qty} MTR:").classes("text-xs font-bold text-gray-600 text-center w-full mb-1")
-                                def do_csv():
-                                    ui.download(generate_single_csv(report), f"{report.area_name}_{report.report_date}_report.csv")
-                                    detail_download_dialog.close()
-                                def do_excel():
-                                    ui.download(generate_single_excel(report), f"{report.area_name}_{report.report_date}_report.xlsx")
-                                    detail_download_dialog.close()
-                                def do_pdf():
-                                    ui.download(generate_single_pdf(report), f"{report.area_name}_{report.report_date}_report.pdf")
-                                    detail_download_dialog.close()
-                                ui.button("As CSV", icon="table_view", on_click=do_csv).props("outline rounded no-caps").classes("w-full font-bold text-sm border-blue-500 text-blue-600 py-2")
-                                ui.button("As Excel", icon="description", on_click=do_excel).props("outline rounded no-caps").classes("w-full font-bold text-sm border-green-500 text-green-600 py-2")
-                                ui.button("As PDF", icon="picture_as_pdf", on_click=do_pdf).props("outline rounded no-caps").classes("w-full font-bold text-sm border-red-500 text-red-600 py-2")
-                        ui.button("📥 Download", icon="download", on_click=detail_download_dialog.open).props("rounded no-caps").classes("w-full py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white font-extrabold text-base shadow-xl")
 
         def build_profile():
             profile_view.clear()
@@ -686,7 +632,7 @@ def main_spa_page():
                                         ui.label("Delete Account?").classes("font-extrabold text-base text-white")
                                     with ui.column().classes("w-full p-5 gap-3 bg-white"):
                                         ui.label("All your data will be permanently deleted!").classes("text-sm font-bold text-slate-800")
-                                        ui.label(f"Email: {user.email} and all reports, areas linked to this account will be removed permanently. This action cannot be undone.").classes("text-xs text-slate-600 leading-relaxed")
+                                        ui.label(f"Email: {user.email} and all reports, areas linked to this account will be removed permanently.").classes("text-xs text-slate-600 leading-relaxed")
                                         with ui.row().classes("w-full justify-between gap-3 mt-2"):
                                             cancel_btn = ui.button("Cancel", icon="close").props("flat rounded no-caps").classes("flex-1 font-bold text-slate-600 bg-slate-100 hover:bg-slate-200")
                                             ok_btn = ui.button("OK, Delete", icon="check").props("rounded no-caps").classes("flex-1 bg-red-600 hover:bg-red-700 text-white font-bold shadow-md")
@@ -701,11 +647,8 @@ def main_spa_page():
                                                 AppUser.objects.filter(id=user_id).delete()
                                                 CACHE["users"].pop(email, None)
                                                 CACHE["areas"].pop(user_id, None)
-                                                keys_to_del = [k for k in CACHE["pwd_verified"] if str(user_id) in str(CACHE["pwd_verified"][k]) or email in k]
-                                                for k in keys_to_del:
-                                                    CACHE["pwd_verified"].pop(k, None)
                                                 app.storage.user.clear()
-                                                ui.notify(f"Account {email} deleted permanently!", type="positive", position="top")
+                                                ui.notify(f"Account {email} deleted!", type="positive", position="top")
                                                 delete_dialog.close()
                                                 show_login()
                                             except Exception as e:
@@ -726,17 +669,18 @@ def main_spa_page():
         with register_view:
             with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
                 with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 p-5 items-center text-white"):
-                    ui.icon("person_add", size="2.5rem"); ui.label("Create Account").classes("text-xl font-extrabold")
+                    ui.icon("person_add", size="2.5rem"); ui.label("Create Account (6-digit)").classes("text-xl font-extrabold")
                 with ui.column().classes("w-full p-5 bg-white gap-3"):
                     uname = ui.input("User name").props("outlined rounded dense").classes("w-full")
                     email = ui.input("Email id").props("outlined rounded dense").classes("w-full")
-                    pwd = ui.input("Password", password=True, password_toggle_button=True).props("outlined rounded dense").classes("w-full")
-                    re_pwd = ui.input("Retype password", password=True, password_toggle_button=True).props("outlined rounded dense").classes("w-full")
+                    pwd = ui.input("Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                    re_pwd = ui.input("Retype password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
                     def handle_register():
-                        u_val = (uname.value or "").strip(); e_val = (email.value or "").strip(); p_val = pwd.value or ""; rp_val = re_pwd.value or ""
+                        u_val = (uname.value or "").strip(); e_val = (email.value or "").strip(); p_val = (pwd.value or "").strip(); rp_val = (re_pwd.value or "").strip()
                         if not u_val or not e_val: ui.notify("Enter User name and Email!", type="warning", position="top"); return
-                        if len(p_val) < 6: ui.notify("Min 6 chars!", type="negative", position="top"); return
-                        if p_val != rp_val: ui.notify("Not same!", type="negative", position="top"); return
+                        if not is_valid_6digit(p_val):
+                            ui.notify("Password must be exactly 6 digits! e.g., 123456", type="negative", position="top"); return
+                        if p_val != rp_val: ui.notify("Passwords not same!", type="negative", position="top"); return
                         if AppUser.objects.filter(email=e_val).exists(): ui.notify("Already registered!", type="negative", position="top"); return
                         user = AppUser.objects.create(username=u_val, email=e_val, password=make_password(p_val), default_report_title="Veraval site daily progress report")
                         CACHE["users"][e_val] = user
@@ -744,22 +688,22 @@ def main_spa_page():
                         CACHE["pwd_verified"][pwd_key] = user.id
                         app.storage.user["saved_email"] = e_val
                         app.storage.user["saved_password"] = p_val
-                        ui.notify("Account created! Login now!", type="positive", position="top")
+                        ui.notify("Account created! Login now with 6-digit password!", type="positive", position="top")
                         show_login()
-                    ui.button("Register", icon="check_circle", on_click=handle_register).props("rounded no-caps").classes("w-full py-2.5 mt-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-base shadow-lg")
+                    ui.button("Register (6-digit)", icon="check_circle", on_click=handle_register).props("rounded no-caps").classes("w-full py-2.5 mt-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-base shadow-lg")
                     ui.button("Back", icon="arrow_back", on_click=show_login).props("flat no-caps").classes("back-btn w-full font-semibold text-sm mt-1")
 
-        # --- SECURE LOGIN: NO FAST OPTIMISTIC HOME ---
         async def handle_login():
             email = (email_input.value or "").strip()
-            pwd = pass_input.value or ""
+            pwd = (pass_input.value or "").strip()
             if not email or not pwd:
                 ui.notify("Enter Email & Password!", type="warning", position="top")
                 return
-
+            # Validate 6-digit for login too
+            if not is_valid_6digit(pwd):
+                ui.notify("Password must be exactly 6 digits!", type="warning", position="top")
+                return
             pwd_key = hashlib.sha256(f"{email}:{pwd}".encode()).hexdigest()
-
-            # If already verified in cache, allow instant
             if pwd_key in CACHE["pwd_verified"]:
                 user_id = CACHE["pwd_verified"][pwd_key]
                 user = CACHE["users"].get(email)
@@ -780,10 +724,8 @@ def main_spa_page():
                     status_label.set_text("✅ Logged in")
                     show_home()
                     return
-
             status_label.set_text("⏳ Verifying...")
             login_btn.props("loading")
-
             def get_user_and_check():
                 try:
                     u = AppUser.objects.get(email=email)
@@ -791,23 +733,16 @@ def main_spa_page():
                     return None, False
                 is_ok = check_password(pwd, u.password)
                 return u, is_ok
-
             quick_user, is_valid = await run.io_bound(get_user_and_check)
-
             login_btn.props(remove="loading")
-
             if not quick_user:
                 status_label.set_text("❌ User not found")
                 ui.notify("User not found! Register first.", type="negative", position="top")
                 return
-
             if not is_valid:
                 status_label.set_text("❌ Invalid password")
-                ui.notify("❌ Invalid password!", type="negative", position="top")
-                # Do NOT show home, stay on login
+                ui.notify("❌ Invalid password! Must be 6 digits correct.", type="negative", position="top")
                 return
-
-            # Valid -> cache and go home
             CACHE["users"][email] = quick_user
             CACHE["pwd_verified"][pwd_key] = quick_user.id
             state["user"] = quick_user
@@ -819,13 +754,14 @@ def main_spa_page():
 
         login_btn.on_click(handle_login)
         reg_btn.on_click(show_register)
-        print("🔒 Secure Login Ready", flush=True)
+        forgot_link.on("click", show_forgot)
+        print("🔒 6-DIGIT PASSWORD + REAL EMAIL Ready", flush=True)
         show_login()
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Secure Login No Popup", "cache": {"users": len(CACHE["users"]), "pwd": len(CACHE["pwd_verified"])}}
+    return {"status": "ok", "mode": "6-Digit Real Email", "reset_tokens": len(CACHE["reset_tokens"])}
 
 if __name__ in {"__main__", "__mp_main__"}:
-    print(f"🚀 Secure Login Starting on 0.0.0.0:{PORT}", flush=True)
-    ui.run(host="0.0.0.0", port=PORT, title="Secure Login", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
+    print(f"🚀 6-Digit Password Starting on 0.0.0.0:{PORT}", flush=True)
+    ui.run(host="0.0.0.0", port=PORT, title="6-Digit Password", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
