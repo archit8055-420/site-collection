@@ -5,6 +5,8 @@ from nicegui import ui, app, run
 CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
 from db_setup import init_django
 init_django()
+from zoneinfo import ZoneInfo
+IST = ZoneInfo("Asia/Kolkata")  # India
 from models_app.models import AppUser, SavedArea, DailyReport
 # ================= FAST INDEX - 30ms - Biju naam =================
 from django.db import connection
@@ -139,7 +141,7 @@ def generate_single_pdf(report):
 def generate_month_csv(title, period_text, t63, t90, t110):
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([title]); writer.writerow([period_text]); writer.writerow([f"Generated: {datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')}"]); writer.writerow([])
+    writer.writerow([title]); writer.writerow([period_text]); writer.writerow([f"Generated: {datetime.datetime.now(IST).strftime('%d-%m-%Y %H:%M:%S')}"]); writer.writerow([])
     writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
     writer.writerow([1, "63MM", t63, f"{t63} MTR"]); writer.writerow([2, "90MM", t90, f"{t90} MTR"]); writer.writerow([3, "110MM", t110, f"{t110} MTR"]); writer.writerow([])
     writer.writerow(["Grand Total", "", t63+t90+t110, f"{t63+t90+t110} MTR"])
@@ -155,7 +157,7 @@ def generate_month_excel(title, period_text, t63, t90, t110):
         hdr_font = Font(bold=True, color="FFFFFF", size=11)
         ws.merge_cells('A1:D1'); ws['A1'] = title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center', vertical='center')
         ws.merge_cells('A2:D2'); ws['A2'] = period_text; ws['A2'].font = Font(bold=True, size=11); ws['A2'].alignment = Alignment(horizontal='center', vertical='center')
-        ws.merge_cells('A3:D3'); ws['A3'] = f"Generated: {datetime.datetime.now().strftime('%d-%m-%Y %H:%M:%S')}"; ws['A3'].alignment = Alignment(horizontal='center', vertical='center')
+        ws.merge_cells('A3:D3'); ws['A3'] = f"Generated: {datetime.datetime.now(IST).strftime('%d-%m-%Y %H:%M:%S')}"; ws['A3'].alignment = Alignment(horizontal='center', vertical='center')
         ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
         r = ws.max_row
         for col in range(1,5):
