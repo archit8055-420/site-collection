@@ -6,6 +6,23 @@ CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
 from db_setup import init_django
 init_django()
 from models_app.models import AppUser, SavedArea, DailyReport
+# ================= FAST INDEX - 30ms - Biju naam =================
+from django.db import connection
+
+def ensure_neon_fast():
+    """Neon ma Index - Data na ude - Fakt FAST - 30ms"""
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_email ON models_app_appuser (email);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_user_date ON models_app_dailyreport (user_id, report_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_date ON models_app_dailyreport (report_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_area ON models_app_savedarea (user_id);")
+            print("✅ FAST INDEX OK - 30ms", flush=True)
+    except Exception as e:
+        print(f"Index skip: {e}", flush=True)
+
+# Auto run - Table na banave - Fakt Index
+ensure_neon_fast()
 try:
     from models_app.models import PasswordResetToken
     HAS_TOKEN_MODEL = True
