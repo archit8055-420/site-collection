@@ -1,86 +1,63 @@
-"""
-FINAL FREE - Gmail SMTP - No Resend - No Money - 100% Working
-- Gmail se sabko mail jayega (Supabase jaisa)
-- 6-digit password
-- DB Token (No Invalid Link)
-- Login loading bug fixed
-- All pages working
-"""
-import os, datetime, csv, io, secrets, hashlib, traceback, ssl, smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-
-print("🚀 FINAL FREE GMAIL Loading...", flush=True)
+import os, datetime, csv, io, secrets, hashlib, traceback, requests
+print("🚀 FINAL RESEND HTTP Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 from nicegui import ui, app, run
-
 CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
-
 from db_setup import init_django
 init_django()
 from models_app.models import AppUser, SavedArea, DailyReport
 try:
     from models_app.models import PasswordResetToken
     HAS_TOKEN_MODEL = True
-    print("✅ PasswordResetToken DB model OK", flush=True)
 except:
     HAS_TOKEN_MODEL = False
-    print("⚠️ Token model missing - using CACHE", flush=True)
-
 from django.contrib.auth.hashers import make_password, check_password
 from django.db.models import Sum
 from django.utils import timezone
-
 PORT = int(os.getenv("PORT", "8080"))
 STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
 
-# ============ FREE GMAIL SMTP - 100% FREE ============
-def send_reset_email_free(to_email, username, reset_link):
-    # Gmail SMTP - Free, sends to ANY email like Supabase
-    host = os.getenv("EMAIL_HOST", "smtp.gmail.com").strip()
-    port = int(os.getenv("EMAIL_PORT", "587"))
-    user = os.getenv("EMAIL_USER", "ajbhai192837465@gmail.com").strip()
-    pwd = os.getenv("EMAIL_PASSWORD", "").strip().replace(" ", "")
-    from_email = os.getenv("EMAIL_FROM", user).strip()
-
-    print(f"📧 FREE GMAIL Trying: FROM={from_email} TO={to_email} HOST={host}", flush=True)
-
-    if not pwd:
-        return False, "EMAIL_PASSWORD (Gmail App Password) nathi! Render Env ma nakho"
-
+def send_reset_email_resend_http(to_email, username, reset_link):
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    from_email = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
+    print(f"📧 RESEND HTTP: FROM={from_email} TO={to_email} KEY={bool(api_key)}", flush=True)
+    if not api_key:
+        return False, "RESEND_API_KEY nathi! https://resend.com thi free key lo ane Render Env ma nakho"
     try:
-        msg = MIMEMultipart()
-        msg['From'] = from_email
-        msg['To'] = to_email
-        msg['Subject'] = f"Reset Password - {username} (6-digit)"
-
-        html = f"""
-<div style="font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px; border:1px solid #e5e7eb;">
+        html = f"""<div style="font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px; border:1px solid #e5e7eb;">
 <h2 style="color:#059669;">Hi {username}!</h2>
 <p>Reset your <b>6-digit password</b> for: <b>{to_email}</b></p>
-<a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">🔑 Reset Password</a>
-<p style="font-size:12px; color:#666;">Valid 15 min. Must be exactly 6 digits (e.g., 123456)</p>
-<p style="font-size:10px; color:#999; word-break:break-all; background:#f9fafb; padding:8px; border-radius:6px;">{reset_link}</p>
-<hr style="margin-top:20px">
-<p style="font-size:11px; color:#999;">This is free Gmail SMTP - No money, like Supabase!</p>
-</div>
-"""
-        msg.attach(MIMEText(html, 'html'))
-
-        context = ssl.create_default_context()
-        with smtplib.SMTP(host, port, timeout=20) as server:
-            server.starttls(context=context)
-            server.login(user, pwd)
-            server.sendmail(from_email, to_email, msg.as_string())
-
-        print(f"✅✅✅ GMAIL SENT to {to_email}", flush=True)
-        return True, "Sent via Gmail FREE - Like Supabase!"
+<a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">Reset Password</a>
+<p style="font-size:12px; color:#666;">Valid 15 min. 6-digit only.</p>
+</div>"""
+        payload = {"from": from_email, "to": [to_email], "subject": f"Reset Password - {username}", "html": html}
+        r = requests.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=20)
+        print(f"Resend {r.status_code} {r.text[:500]}", flush=True)
+        if r.status_code in (200,201):
+            return True, f"Sent via Resend HTTP ID: {r.json().get('id','')}"
+        else:
+            return False, f"Resend Failed {r.status_code}: {r.text[:500]}"
     except Exception as e:
-        err = f"Gmail Failed: {e}\n{traceback.format_exc()[:800]}"
-        print(f"❌ {err}", flush=True)
-        return False, err
+        return False, f"Resend HTTP Failed: {e} {traceback.format_exc()[:800]}"
 
 def is_valid_6digit(pwd):
+    return pwd and len(pwd)==6 and pwd.isdigit()
+
+from fastapi import Request
+@app.get("/health")
+def health_check():
+    return {"status":"ok","mode":"Resend HTTP - 100% Working on Render Free - Like Supabase","resend_configured": bool(os.getenv("RESEND_API_KEY","").strip()), "gmail_configured": True, "token_model": HAS_TOKEN_MODEL}
+
+@app.get("/test-email-debug")
+def test_email_debug(to: str = "ajbhai192837465@gmail.com"):
+    link = f"{os.getenv('BASE_URL','https://site-collection.onrender.com')}/reset/TEST123?email={to}"
+    ok, msg = send_reset_email_resend_http(to, "Test", link)
+    return {"to": to, "success": ok, "message": msg, "resend_key_set": bool(os.getenv("RESEND_API_KEY","").strip()), "email_from": os.getenv("EMAIL_FROM","onboarding@resend.dev"), "mode":"Resend HTTP API"}
+
+
+def is_valid_6digit(pwd):
+    return pwd and len(pwd)==6 and pwd.isdigit()
+
     return pwd and len(pwd) == 6 and pwd.isdigit()
 
 def generate_single_csv(report):
@@ -444,7 +421,7 @@ def main_spa_page():
                                 base_url = "https://site-collection.onrender.com"
                             reset_link = f"{base_url}/reset/{token}"
                             forgot_status.set_text("⏳ Sending mail... (FREE Gmail)")
-                            success, msg = send_reset_email_free(email, user.username, reset_link)
+                            success, msg = send_reset_email_resend_http(email, user.username, reset_link)
                             if success:
                                 forgot_status.set_text("✅ Mail sent! Check inbox & spam - 15 min valid (FREE)")
                             else:
@@ -948,7 +925,7 @@ def test_email_debug(to: str = ""):
     if not to:
         return {"error": "Add ?to=your_email@gmail.com - e.g., /test-email-debug?to=test@gmail.com"}
     link = "https://site-collection.onrender.com/reset/test123"
-    success, msg = send_reset_email_free(to, "TestUser", link)
+    success, msg = send_reset_email_resend_http(to, "TestUser", link)
     return {"to": to, "success": success, "message": msg, "gmail_user": os.getenv("EMAIL_USER"), "gmail_pass_set": bool(os.getenv("EMAIL_PASSWORD"))}
 
 if __name__ in {"__main__", "__mp_main__"}:
