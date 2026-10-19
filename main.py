@@ -1,18 +1,11 @@
 """
-FINAL FIXED - RESEND + 6-DIGIT + ALL PAGES WORKING
-- Resend API (re_ key) - No Gmail 2FA
-- 6-digit password only
-- Secure Login + Forgot + Reset (15 min)
-- Home: Title persist + Area suggestions + Pipe 63/90/110 + Save
-- Filter: Date/Month/Year + Patti Clickable + Edit/Delete + Month Download
-- Detail: Full report + PDF/Excel/CSV Download
-- Profile + Register + Test Email
+FINAL FIXED V2 - RESEND ERROR VISIBLE
 """
 import os, datetime, csv, io, secrets, hashlib, time, smtplib, ssl, traceback, json
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
-print("🚀 FINAL FIXED - Resend + 6-Digit Loading...", flush=True)
+print("🚀 FINAL FIXED V2 Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 from nicegui import ui, app, run
 
@@ -27,13 +20,13 @@ from django.db.models import Sum
 PORT = int(os.getenv("PORT", "8080"))
 STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
 
-# ============ RESEND EMAIL ============
 def send_via_resend(to_email, username, reset_link):
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     from_email = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
     if not api_key:
-        return None
-    print(f"📧 Trying RESEND: FROM={from_email} TO={to_email} KEY_LEN={len(api_key)}", flush=True)
+        return False, "RESEND_API_KEY not set in Environment"
+    
+    print(f"📧 Trying RESEND: FROM={from_email} TO={to_email} KEY={api_key[:8]}...", flush=True)
     try:
         import requests
         html = f"""
@@ -41,62 +34,34 @@ def send_via_resend(to_email, username, reset_link):
 <h2 style="color:#059669;">Welcome {username}!</h2>
 <p>Reset your <b>site password (6-digit only)</b> for: <b>{to_email}</b></p>
 <a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">🔑 Reset Password (6-digit)</a>
-<p style="font-size:12px; color:#666;">New password must be exactly 6 digits (e.g., 123456). Valid 15 min.</p>
-<p style="font-size:10px; color:#999; word-break:break-all; background:#f9fafb; padding:8px; border-radius:6px;">{reset_link}</p>
+<p style="font-size:12px; color:#666;">Valid 15 min. Must be exactly 6 digits.</p>
 </div>
 """
         resp = requests.post(
             "https://api.resend.com/emails",
             headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-            json={"from": from_email, "to": [to_email], "subject": "Reset Password - Site Collection (6-digit)", "html": html},
-            timeout=15
+            json={"from": from_email, "to": [to_email], "subject": "Reset Password - 6-digit", "html": html},
+            timeout=20
         )
-        print(f"📨 RESEND Response: {resp.status_code} {resp.text[:500]}", flush=True)
+        print(f"📨 RESEND Response: {resp.status_code} {resp.text}", flush=True)
         if resp.status_code in (200, 201):
-            print(f"✅✅✅ RESEND SENT to {to_email}", flush=True)
-            return True, "Sent via Resend"
+            return True, f"Sent via Resend! ID: {resp.text[:200]}"
         else:
-            return False, f"Resend error {resp.status_code}: {resp.text}"
+            # Return full error from Resend
+            return False, f"Resend API Error {resp.status_code}: {resp.text}"
     except Exception as e:
-        print(f"❌ RESEND FAILED: {e}\n{traceback.format_exc()}", flush=True)
-        return False, str(e)
-
-def send_via_smtp(to_email, username, reset_link):
-    host = os.getenv("EMAIL_HOST", "").strip()
-    port = int(os.getenv("EMAIL_PORT", "587"))
-    user = os.getenv("EMAIL_USER", "").strip()
-    pwd = os.getenv("EMAIL_PASSWORD", "").strip().replace(" ", "")
-    from_email = os.getenv("EMAIL_FROM", user).strip()
-    if not host or not user or not pwd:
-        return False, "SMTP not configured"
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = from_email
-        msg['To'] = to_email
-        msg['Subject'] = "Reset Password (6-digit)"
-        html = f"<h2>Hi {username}</h2><p>Reset link: <a href='{reset_link}'>{reset_link}</a></p>"
-        msg.attach(MIMEText(html, 'html'))
-        context = ssl.create_default_context()
-        with smtplib.SMTP(host, port, timeout=15) as server:
-            server.starttls(context=context)
-            server.login(user, pwd)
-            server.sendmail(from_email, to_email, msg.as_string())
-        return True, "Sent via SMTP"
-    except Exception as e:
-        return False, str(e)
+        err = f"RESEND Exception: {e}\n{traceback.format_exc()}"
+        print(f"❌ {err}", flush=True)
+        return False, err
 
 def send_reset_email(to_email, username, reset_link):
-    if os.getenv("RESEND_API_KEY"):
-        success, msg = send_via_resend(to_email, username, reset_link)
-        if success:
-            return success, msg
-        print(f"⚠ Resend failed, trying SMTP...", flush=True)
-    return send_via_smtp(to_email, username, reset_link)
+    # Always try Resend first
+    success, msg = send_via_resend(to_email, username, reset_link)
+    return success, msg
 
 def is_valid_6digit(pwd):
     return pwd and len(pwd) == 6 and pwd.isdigit()
 
-# ============ CSV/EXCEL/PDF ============
 def generate_single_csv(report):
     output = io.StringIO()
     writer = csv.writer(output)
@@ -241,7 +206,6 @@ ui.add_css("""
     .forgot-link:hover { text-decoration: underline !important; color: #1d4ed8 !important; }
 """, shared=True)
 
-# ============ RESET PAGES ============
 @ui.page("/reset")
 def reset_page_with_query():
     try:
@@ -314,10 +278,8 @@ def build_reset_content(token: str):
                         status_lbl.set_text(f"❌ Failed: {e}")
                 ui.button("Confirm (6-digit)", icon="check", on_click=do_confirm_reset).props("rounded no-caps").classes("w-full mt-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 shadow-lg")
 
-# ============ MAIN SPA ============
 @ui.page("/")
 def main_spa_page():
-    print("🚀 FINAL FIXED Loading", flush=True)
     state = {"user": None, "selected_report": None}
     with ui.column().classes("w-full min-h-screen p-0 m-0 gap-0") as root:
         login_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3")
@@ -467,7 +429,7 @@ def main_spa_page():
                                     with ui.card().classes("w-full p-2 bg-red-50 border border-red-200 rounded-xl"):
                                         ui.label(reset_link).classes("text-[10px] font-bold text-blue-700 break-all w-full")
                                     ui.button("Open Reset Page", icon="open_in_new", on_click=lambda: ui.navigate.to(reset_link)).props("rounded no-caps dense").classes("w-full bg-blue-600 text-white font-bold text-xs mt-2")
-                            print(f"🔑 RESET LINK for {email}: {reset_link}", flush=True)
+                            print(f"🔑 RESET LINK for {email}: {reset_link} -> {msg}", flush=True)
                         ui.button("Send Reset Link (6-digit)", icon="send", on_click=send_reset_link).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
                         ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
 
@@ -957,12 +919,12 @@ def main_spa_page():
         login_btn.on_click(handle_login)
         reg_btn.on_click(show_register)
         forgot_link.on("click", show_forgot)
-        print("🔒 FINAL FIXED Ready - All Pages", flush=True)
+        print("🔒 FINAL V2 Ready", flush=True)
         show_login()
 
 @app.get("/health")
 def health_check():
-    return {"status": "ok", "mode": "Resend 6-Digit Final", "resend_configured": bool(os.getenv("RESEND_API_KEY")), "cache": {"users": len(CACHE["users"]), "pwd": len(CACHE["pwd_verified"])}}
+    return {"status": "ok", "mode": "Resend 6-Digit Final V2", "resend_configured": bool(os.getenv("RESEND_API_KEY"))}
 
 @app.get("/test-email-debug")
 def test_email_debug(to: str = ""):
@@ -970,8 +932,8 @@ def test_email_debug(to: str = ""):
         return {"error": "Add ?to=your_email@gmail.com - ex: /test-email-debug?to=test@gmail.com"}
     link = "https://site-collection.onrender.com/reset/test123"
     success, msg = send_reset_email(to, "TestUser", link)
-    return {"to": to, "success": success, "message": msg, "resend_key": bool(os.getenv("RESEND_API_KEY")), "email_from": os.getenv("EMAIL_FROM")}
+    return {"to": to, "success": success, "message": msg, "resend_key_set": bool(os.getenv("RESEND_API_KEY")), "email_from": os.getenv("EMAIL_FROM"), "api_key_prefix": os.getenv("RESEND_API_KEY","")[:10]}
 
 if __name__ in {"__main__", "__mp_main__"}:
-    print(f"🚀 FINAL Starting on 0.0.0.0:{PORT}", flush=True)
-    ui.run(host="0.0.0.0", port=PORT, title="Resend 6-Digit Final", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
+    print(f"🚀 FINAL V2 Starting on 0.0.0.0:{PORT}", flush=True)
+    ui.run(host="0.0.0.0", port=PORT, title="Resend 6-Digit Final V2", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
