@@ -7,6 +7,11 @@ from db_setup import init_django
 init_django()
 from zoneinfo import ZoneInfo
 IST = ZoneInfo("Asia/Kolkata")  # India
+
+def today_ist():
+    return datetime.datetime.now(IST).date()
+def now_ist():
+    return datetime.datetime.now(IST)
 from models_app.models import AppUser, SavedArea, DailyReport
 # ================= FAST INDEX - 30ms - Biju naam =================
 from django.db import connection
@@ -466,7 +471,7 @@ def main_spa_page():
                 with ui.column().classes("w-full max-w-md items-center gap-2"):
                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                         ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-xs shadow-sm")
-                        today_str = datetime.date.today().isoformat()
+                        today_str = datetime.datetime.now(IST).date().isoformat()
                         with ui.row().classes("date-pill items-center justify-center"):
                             home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-xs font-bold")
                         with ui.button(icon="account_circle").props("round unelevated dense").classes("bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"):
@@ -584,7 +589,7 @@ def main_spa_page():
                 user = fresh
             except:
                 pass
-            today = datetime.date.today(); months = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}; years = {y: str(y) for y in range(today.year - 5, today.year + 2)}
+            today = datetime.datetime.now(IST).date(); months = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}; years = {y: str(y) for y in range(today.year - 5, today.year + 2)}
             with filter_view:
                 with ui.column().classes("w-full max-w-md items-center gap-2"):
                     with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white p-3 sm:p-5 border-2 border-green-200"):
