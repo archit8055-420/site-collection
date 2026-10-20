@@ -24,14 +24,14 @@ class DailyReport(models.Model):
     report_title = models.CharField(max_length=255)
     report_date = models.DateField(default=timezone.now)
     area_name = models.CharField(max_length=150, blank=True, default="")
-    labour_name = models.CharField(max_length=150, blank=True, default="")  # NEW
-    qty_63mm = models.IntegerField(default=0)
-    qty_90mm = models.IntegerField(default=0)
-    qty_110mm = models.IntegerField(default=0)
-    qty_150mm = models.IntegerField(default=0)
-    total_pvc = models.IntegerField(default=0)
-    total_di = models.IntegerField(default=0)
-    total_qty = models.IntegerField(default=0)
+    labour_name = models.CharField(max_length=150, blank=True, default="")
+    qty_63mm = models.FloatField(default=0)  # CHANGED to Float for 3.2
+    qty_90mm = models.FloatField(default=0)
+    qty_110mm = models.FloatField(default=0)
+    qty_150mm = models.FloatField(default=0)
+    total_pvc = models.FloatField(default=0)
+    total_di = models.FloatField(default=0)
+    total_qty = models.FloatField(default=0)
     price_sum = models.FloatField(default=0.0)
 
 class PasswordResetToken(models.Model):
