@@ -549,8 +549,16 @@ def main_spa_page():
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-center"):
                                     di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2 font-bold text-cyan-300 text-[11px]")
                         def parse_qty(val):
-                            try: return int(float(val)) if val not in (None, "") else 0
-                            except ValueError: return 0
+                            try:
+                                if val in (None, ""):
+                                    return 0
+                                # Handle string "10000.0" etc
+                                return int(float(str(val).strip()))
+                            except:
+                                try:
+                                    return int(val)
+                                except:
+                                    return 0
                         def update_live_preview():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
                             pvc_total_lbl.set_text(f"Total PVC Pipes : {q63+q90+q110} Quantity")
@@ -779,7 +787,22 @@ def main_spa_page():
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x border-white/30"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r border-white/30"); ui.label("150MM DI").classes("py-2 text-[10px]")
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
-                                ui.label(f"{get_q(report,'qty_63mm')}").classes("py-3 font-extrabold text-xs"); ui.label(f"{get_q(report,'qty_90mm')}").classes("py-3 font-extrabold text-xs border-x border-gray-200"); ui.label(f"{get_q(report,'qty_110mm')}").classes("py-3 font-extrabold text-xs border-r border-gray-200"); ui.label(f"{get_q(report,'qty_150mm')}").classes("py-3 font-extrabold text-xs bg-green-50")
+                                # FIX: Show actual value even if qty_150mm is 0 - use count or total_di
+                                def safe_q(field, fallback=0):
+                                    v = get_q(report, field, 0)
+                                    if v and v!=0:
+                                        return v
+                                    # Try count field
+                                    cf = field.replace('qty_','count_')
+                                    cv = get_q(report, cf, 0)
+                                    if cv and cv!=0:
+                                        return cv
+                                    return fallback
+                                q63d = safe_q('qty_63mm')
+                                q90d = safe_q('qty_90mm')
+                                q110d = safe_q('qty_110mm')
+                                q150d = safe_q('qty_150mm', get_q(report,'total_di',0) or (report.total_qty if (get_q(report,'total_pvc',0)==0 and get_q(report,'qty_63mm',0)==0 and get_q(report,'qty_90mm',0)==0 and get_q(report,'qty_110mm',0)==0) else 0))
+                                ui.label(f"{q63d}").classes("py-3 font-extrabold text-xs"); ui.label(f"{q90d}").classes("py-3 font-extrabold text-xs border-x border-gray-200"); ui.label(f"{q110d}").classes("py-3 font-extrabold text-xs border-r border-gray-200"); ui.label(f"{q150d}").classes("py-3 font-extrabold text-xs bg-green-50 text-green-700")
                             with ui.grid(columns=2).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white text-center items-center"):
                                 pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
                                 di = get_q(report,'qty_150mm')
