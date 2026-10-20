@@ -1,4 +1,3 @@
-
 import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
 print("🚀 FINAL VERAVAL TRACKER Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -721,7 +720,7 @@ def main_spa_page():
             except Exception:
                 pass
             with home_view:
-                with ui.column().classes("w-full max-w-md items-center gap-0.5"):
+                with ui.column().classes("w-full max-w-md items-center gap-0"):
                     with ui.card().classes("w-full rounded-2xl shadow-xl bg-white p-1.5 border-2 border-green-200"):
                         # COMPACT TOP BAR INSIDE BOX - Back + Date + Profile in one line - No extra space
                         with ui.row().classes("w-full justify-between items-center mb-1 px-1 py-0.5 bg-slate-50 rounded-full border"):
@@ -779,7 +778,7 @@ def main_spa_page():
                         saved_areas = get_areas()
                         saved_labours = get_labours()
                         # Area + Labour Name side by side - FIXED: No live filtering while typing
-                        with ui.row().classes("w-full mb-1 gap-1.5"):
+                        with ui.row().classes("w-full mb-0.5 gap-1.5"):
                             with ui.column().classes("flex-1 gap-0.5"):
                                 ui.label("Enter Area *").classes("text-[12px] font-extrabold text-green-700 ml-1")
                                 area_input = ui.input(placeholder="Type area...", value="").props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
@@ -817,55 +816,55 @@ def main_spa_page():
                                                 ui.button(lab, on_click=make_click()).props("flat dense rounded").classes("text-[11px] bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2.5 py-0.5")
                                     refresh_labour_suggestions()
                                 # NO on_value_change live filtering for labour
-                        with ui.row().classes("w-full justify-center items-center gap-1 mb-1"):
+                        with ui.row().classes("w-full justify-center items-center gap-1 mb-0.5"):
                             ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
                         # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
                         
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
-                                ui.label("63MM PVC").classes("py-1.5 text-[11px]"); ui.label("90MM PVC").classes("py-1.5 text-[11px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-1.5 text-[11px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-1.5 text-[11px]")
+                                ui.label("63MM PVC").classes("py-2 text-[13px]"); ui.label("90MM PVC").classes("py-2 text-[13px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[13px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[13px]")
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
-                                with ui.column().classes("p-1 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
-                                with ui.column().classes("p-1 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
-                                with ui.column().classes("p-1 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
-                                with ui.column().classes("p-1 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
+                                with ui.column().classes("p-1 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
+                                with ui.column().classes("p-1 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
+                                with ui.column().classes("p-1 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
                             
                             # +Add MTR Buttons Row - NEW FEATURE
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center border-t border-indigo-900"):
                                 with ui.column().classes("p-0.5 items-center w-full"):
-                                    add_63_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                    add_63_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
                                 with ui.column().classes("p-0.5 items-center border-x-2 border-indigo-900 w-full"):
-                                    add_90_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                    add_90_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
                                 with ui.column().classes("p-0.5 items-center border-r-2 border-indigo-900 w-full"):
-                                    add_110_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                    add_110_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
                                 with ui.column().classes("p-0.5 items-center w-full"):
-                                    add_150_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                    add_150_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
                             
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
-                                ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px]")
+                                ui.label("6MTR per PIPES").classes("py-1.5 font-extrabold text-indigo-900 text-[11px]")
                                 ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-x-2 border-indigo-900")
                                 ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-r-2 border-indigo-900")
-                                ui.label("5.5MTR").classes("py-1 font-extrabold text-indigo-900 text-[9px]")
+                                ui.label("5.5MTR").classes("py-1.5 font-extrabold text-indigo-900 text-[11px]")
                             # MTR Display Row - Count*6 + Extra
                             with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
-                                m63_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px]")
-                                m90_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px] border-x-2 border-indigo-900")
-                                m110_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px] border-r-2 border-indigo-900")
-                                m150_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px]")
+                                m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px]")
+                                m90_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px] border-x-2 border-indigo-900")
+                                m110_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px] border-r-2 border-indigo-900")
+                                m150_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px]")
                             # Extra MTR Display Row
                             with ui.grid(columns=4).classes("w-full bg-orange-50 text-center border-b border-indigo-900 items-center"):
-                                e63_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px]")
-                                e90_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px] border-x-2 border-indigo-900")
-                                e110_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px] border-r-2 border-indigo-900")
-                                e150_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px]")
+                                e63_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px]")
+                                e90_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px] border-x-2 border-indigo-900")
+                                e110_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px] border-r-2 border-indigo-900")
+                                e150_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px]")
                             with ui.column().classes("w-full gap-0"):
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
-                                    pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-1.5 font-bold text-green-300 text-[12px] border-b border-white/10")
+                                    pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-2.5 font-bold text-green-300 text-[14px] border-b border-white/10")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-center"):
-                                    di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-1.5 font-bold text-cyan-300 text-[12px]")
+                                    di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2.5 font-bold text-cyan-300 text-[14px]")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
-                                    mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-1.5 font-bold text-yellow-200 text-[12px]")
+                                    mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-3 font-bold text-yellow-200 text-[14px]")
                         
                         # Dialogs for Extra MTR - NEW
                         with ui.dialog() as extra_63_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
@@ -1111,15 +1110,15 @@ def main_spa_page():
                                         with ui.card().classes("report-patti w-full rounded-2xl border-2 border-green-200 bg-gradient-to-r from-white to-green-50 p-0 overflow-hidden shadow-md"):
                                             with ui.column().classes("patti-click-area w-full p-3 pb-1").on("click", lambda r=report: show_filter_detail(r)):
                                                 with ui.row().classes("w-full justify-between items-center"):
-                                                    with ui.row().classes("items-center gap-2"): ui.icon("location_on", color="green", size="1.1rem"); ui.label(area_display).classes("font-extrabold text-sm text-indigo-900")
+                                                    with ui.row().classes("items-center gap-2"): ui.icon("location_on", color="green", size="1.1rem"); ui.label(area_display).classes("font-extrabold text-[15px] text-indigo-900")
                                                     ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
                                                 ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
                                                 with ui.row().classes("w-full justify-between items-center mt-1"):
-                                                    ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[11px] font-bold text-slate-600")
-                                                    ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
+                                                    ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[13px] font-bold text-slate-700")
+                                                    ui.label(f"Total: {report.total_qty} Qty").classes("text-[14px] font-extrabold text-emerald-600")
                                             with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
-                                                edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1 bg-yellow-300 text-black font-bold border border-yellow-400")
-                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-500 text-white font-bold")
+                                                edit_btn = ui.button("Edit", icon="edit").props("dense rounded").classes("px-4 py-1.5 bg-yellow-400 text-black font-extrabold text-[13px] border-2 border-yellow-500 shadow-sm")
+                                                del_btn = ui.button("Delete", icon="delete").props("dense rounded").classes("px-4 py-1.5 bg-red-600 text-yellow-200 font-extrabold text-[13px] border-2 border-red-700 shadow-md")
                                                 with ui.dialog() as edit_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"):
                                                     with ui.column().classes("w-full p-0 gap-0"):
                                                         with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-3 items-center justify-between text-white"):
@@ -1134,23 +1133,38 @@ def main_spa_page():
                                                             e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
                                                             ui.label("Report Title").classes("text-xs font-bold text-slate-700")
                                                             e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
+                                                            ui.label("PVC & DI Quantity").classes("text-[13px] font-extrabold text-green-700 mt-2")
                                                             with ui.grid(columns=4).classes("w-full gap-2"):
                                                                 with ui.column().classes("gap-1"):
-                                                                    ui.label("63MM PVC").classes("text-xs font-bold text-center")
-                                                                    e_63 = ui.input(value=str(get_q(report,'qty_63mm'))).props("type=number outlined dense").classes("w-full")
+                                                                    ui.label("63MM PVC").classes("text-[12px] font-bold text-center")
+                                                                    e_63 = ui.input(value=str(get_q(report,'qty_63mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
                                                                 with ui.column().classes("gap-1"):
-                                                                    ui.label("90MM PVC").classes("text-xs font-bold text-center")
-                                                                    e_90 = ui.input(value=str(get_q(report,'qty_90mm'))).props("type=number outlined dense").classes("w-full")
+                                                                    ui.label("90MM PVC").classes("text-[12px] font-bold text-center")
+                                                                    e_90 = ui.input(value=str(get_q(report,'qty_90mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
                                                                 with ui.column().classes("gap-1"):
-                                                                    ui.label("110MM PVC").classes("text-xs font-bold text-center")
-                                                                    e_110 = ui.input(value=str(get_q(report,'qty_110mm'))).props("type=number outlined dense").classes("w-full")
+                                                                    ui.label("110MM PVC").classes("text-[12px] font-bold text-center")
+                                                                    e_110 = ui.input(value=str(get_q(report,'qty_110mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
                                                                 with ui.column().classes("gap-1"):
-                                                                    ui.label("150MM DI").classes("text-xs font-bold text-center")
-                                                                    e_150 = ui.input(value=str(get_q(report,'qty_150mm'))).props("type=number outlined dense").classes("w-full")
+                                                                    ui.label("150MM DI").classes("text-[12px] font-bold text-center")
+                                                                    e_150 = ui.input(value=str(get_q(report,'qty_150mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
+                                                            ui.label("Extra MTR (Additional Meters)").classes("text-[13px] font-extrabold text-orange-700 mt-3 bg-orange-50 px-2 py-1 rounded-full")
+                                                            with ui.grid(columns=4).classes("w-full gap-2 mt-1"):
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("63MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_63 = ui.input(value=str(get_q(report,'extra_63mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("90MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_90 = ui.input(value=str(get_q(report,'extra_90mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("110MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_110 = ui.input(value=str(get_q(report,'extra_110mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("150MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_150 = ui.input(value=str(get_q(report,'extra_150mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
                                                             with ui.row().classes("w-full justify-between gap-3 mt-2"):
                                                                 ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
                                                                 save_edit_btn = ui.button("OK", icon="check").props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
-                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, dlg=edit_dialog):
+                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, dlg=edit_dialog, ex63=e_extra_63, ex90=e_extra_90, ex110=e_extra_110, ex150=e_extra_150):
                                                                 def do_save():
                                                                     try:
                                                                         try:
@@ -1161,9 +1175,11 @@ def main_spa_page():
                                                                         new_labour = (el.value or "").strip() or get_q(rpt,'labour_name','')
                                                                         new_title = (et.value or "").strip() or rpt.report_title
                                                                         def pq(v):
-                                                                            try: return int(float(v)) if v not in (None, "") else 0
+                                                                            try: return float(v) if v not in (None, "") else 0
                                                                             except: return 0
                                                                         q63 = pq(e63.value); q90 = pq(e90.value); q110 = pq(e110.value); q150 = pq(e150.value)
+                                                                        ex_63 = pq(ex63.value); ex_90 = pq(ex90.value); ex_110 = pq(ex110.value); ex_150 = pq(ex150.value)
+                                                                        total_mtr = (q63*6+ex_63)+(q90*6+ex_90)+(q110*6+ex_110)+(q150*5.5+ex_150)
                                                                         rpt.report_date = new_date
                                                                         rpt.area_name = new_area
                                                                         try:
@@ -1174,15 +1190,19 @@ def main_spa_page():
                                                                         rpt.qty_63mm = q63; rpt.qty_90mm = q90; rpt.qty_110mm = q110
                                                                         try: rpt.qty_150mm = q150
                                                                         except: pass
-                                                                        try: rpt.total_pvc = q63+q90+q110; rpt.total_di = q150
+                                                                        try: 
+                                                                            rpt.extra_63mm = ex_63; rpt.extra_90mm = ex_90; rpt.extra_110mm = ex_110; rpt.extra_150mm = ex_150
+                                                                            rpt.total_mtr = total_mtr
+                                                                            rpt.total_pvc = q63+q90+q110; rpt.total_di = q150
                                                                         except: pass
                                                                         rpt.total_qty = q63+q90+q110+q150
-                                                                        rpt.price_sum = float(q63+q90+q110+q150)
+                                                                        rpt.price_sum = float(total_mtr)
                                                                         rpt.save()
-                                                                        ui.notify("✅ Data Updated!", type="positive", position="top", timeout=2000)
+                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} (+Extra:{ex_63+ex_90+ex_110+ex_150})", type="positive", position="top", timeout=2000)
                                                                         dlg.close()
                                                                         load_table_data()
                                                                     except Exception as ex:
+                                                                        import traceback; traceback.print_exc()
                                                                         ui.notify(f"Edit failed: {ex}", type="negative")
                                                                 return do_save
                                                             save_edit_btn.on_click(make_save_edit())
