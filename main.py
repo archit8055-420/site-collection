@@ -1,4 +1,3 @@
-
 import os, datetime, csv, io, secrets, hashlib, traceback, requests
 print("🚀 FINAL RESEND HTTP Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -492,7 +491,7 @@ def main_spa_page():
                         # FINAL 4-PIPE - STATIC UNIT - 6,12,18,5.5 MTR - with PVC/DI split total
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
-                                ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[10px] bg-slate-700")
+                                ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[10px]")
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
                                 with ui.column().classes("p-1.5 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]'").classes("w-full")
                                 with ui.column().classes("p-1.5 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]'").classes("w-full")
@@ -503,7 +502,7 @@ def main_spa_page():
                                 ui.label("6 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px]")
                                 ui.label("12 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px] border-x-2 border-indigo-900")
                                 ui.label("18 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px] border-r-2 border-indigo-900")
-                                ui.label("5.5 MTR").classes("py-2.5 font-extrabold text-slate-800 text-[10px] bg-slate-100")
+                                ui.label("5.5 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px]")
                             with ui.column().classes("w-full gap-0"):
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
                                     pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-2 font-bold text-green-300 text-[11px] border-b border-white/10")
@@ -518,7 +517,7 @@ def main_spa_page():
                             di_total = q150
                             pvc_total_lbl.set_text(f"Total PVC Pipes : {pvc_total} Quantity")
                             di_total_lbl.set_text(f"Total DI Pipes : {di_total} Quantity")
-                        c63.on_value_change(lambda: update_live_preview()); c90.on_value_change(lambda: update_live_preview()); c110.on_value_change(lambda: update_live_preview())
+                        c63.on_value_change(lambda: update_live_preview()); c90.on_value_change(lambda: update_live_preview()); c110.on_value_change(lambda: update_live_preview()); c150.on_value_change(lambda: update_live_preview())
                         def save_daily_report():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
                             try:
@@ -603,14 +602,14 @@ def main_spa_page():
                                                     ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
                                                 ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
                                                 with ui.row().classes("w-full justify-between items-center mt-1"):
-                                                    ui.label(f"63:{report.qty_63mm} | 90:{report.qty_90mm} | 110:{report.qty_110mm}").classes("text-[11px] font-bold text-slate-600")
+                                                    ui.label(f"63:{report.qty_63mm} | 90:{report.qty_90mm} | 110:{report.qty_110mm} | 150DI:{getattr(report, 'qty_150mm', 0)}").classes("text-[11px] font-bold text-slate-600")
                                                     ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
                             else:
-                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
+                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
-                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6 MTR"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "12 MTR"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "18 MTR"}]
+                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6 MTR"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "12 MTR"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "18 MTR"}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "unit": "5.5 MTR"}]
                                     columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
                                     ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
                         day_select.on_value_change(lambda: load_table_data()); month_select.on_value_change(lambda: load_table_data()); year_select.on_value_change(lambda: load_table_data()); load_table_data()
