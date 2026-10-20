@@ -17,18 +17,37 @@ except:
 from django.db import connection
 
 def ensure_neon_fast():
+    # SAFE VERSION - No ALTER TYPE that causes syntax error, use Django migration safe method
     try:
         with connection.cursor() as cursor:
+            # Check if tables exist first
+            cursor.execute("SELECT to_regclass('models_app_dailyreport');")
+            table_exists = cursor.fetchone()[0] is not None
+            if not table_exists:
+                print("⏳ Tables not yet created - skipping ALTER, will be created by Django", flush=True)
+                return
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_email ON models_app_appuser (email);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_user_date ON models_app_dailyreport (user_id, report_date);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_date ON models_app_dailyreport (report_date);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_area ON models_app_savedarea (user_id);")
+            # SAFE: Add columns if not exists - no TYPE change that causes syntax error
+            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
             cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS qty_150mm DOUBLE PRECISION DEFAULT 0;")
             cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_pvc DOUBLE PRECISION DEFAULT 0;")
             cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_di DOUBLE PRECISION DEFAULT 0;")
-            print("✅ FAST INDEX + 150MM OK", flush=True)
+            # For point values, we don't ALTER TYPE in code - we handle in models as FloatField
+            # Old integer data will still work as float in Django
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS models_app_savedlabour (
+                    id BIGSERIAL PRIMARY KEY,
+                    user_id BIGINT NOT NULL REFERENCES models_app_appuser(id) ON DELETE CASCADE,
+                    labour_name VARCHAR(150) NOT NULL,
+                    UNIQUE(user_id, labour_name)
+                );
+            """)
+            print("✅ FAST INDEX OK - Point values handled by FloatField", flush=True)
     except Exception as e:
-        print(f"Skip: {e}", flush=True)
+        print(f"Index skip (safe): {e}", flush=True)
 ensure_neon_fast()
 
 try:
