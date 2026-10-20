@@ -1,4 +1,787 @@
-                        rpt.price_sum = float(q63+q90+q110+q150)
+import os, datetime, csv, io, secrets, hashlib, traceback, requests
+print("🚀 FINAL 4-PIPE SIMPLE Loading...", flush=True)
+os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+from nicegui import ui, app, run
+CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
+from db_setup import init_django
+init_django()
+from zoneinfo import ZoneInfo
+IST = ZoneInfo("Asia/Kolkata")
+def today_ist(): return datetime.datetime.now(IST).date()
+from models_app.models import AppUser, SavedArea, DailyReport
+from django.db import connection
+
+def ensure_neon_fast():
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_email ON models_app_appuser (email);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_user_date ON models_app_dailyreport (user_id, report_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_date ON models_app_dailyreport (report_date);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_area ON models_app_savedarea (user_id);")
+            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS qty_150mm DOUBLE PRECISION DEFAULT 0;")
+            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_pvc DOUBLE PRECISION DEFAULT 0;")
+            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_di DOUBLE PRECISION DEFAULT 0;")
+            print("✅ FAST INDEX + 150MM OK", flush=True)
+    except Exception as e:
+        print(f"Skip: {e}", flush=True)
+ensure_neon_fast()
+
+try:
+    from models_app.models import PasswordResetToken
+    HAS_TOKEN_MODEL = True
+except:
+    HAS_TOKEN_MODEL = False
+
+from django.contrib.auth.hashers import make_password, check_password
+from django.db.models import Sum
+from django.utils import timezone
+PORT = int(os.getenv("PORT", "8080"))
+STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
+
+def send_reset_email_resend_http(to_email, username, reset_link):
+    api_key = os.getenv("RESEND_API_KEY", "").strip()
+    from_email = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
+    if not api_key:
+        return False, "RESEND_API_KEY nathi!"
+    try:
+        html = f"<div style='font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px;'><h2>Hi {username}!</h2><p>Reset for: <b>{to_email}</b></p><a href='{reset_link}' style='display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;'>Reset Password</a></div>"
+        payload = {"from": from_email, "to": [to_email], "subject": f"Reset Password - {username}", "html": html}
+        r = requests.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=20)
+        if r.status_code in (200,201):
+            return True, f"Sent ID: {r.json().get('id','')}"
+        else:
+            return False, f"Failed {r.status_code}: {r.text[:500]}"
+    except Exception as e:
+        return False, f"Failed: {e}"
+
+def is_valid_6digit(pwd):
+    return pwd and len(pwd)==6 and pwd.isdigit()
+
+@app.get("/health")
+def health_check():
+    return {"status":"ok","mode":"4-PIPE SIMPLE - 63,90,110,150"}
+
+def get_q(report, field, default=0):
+    try:
+        return getattr(report, field, default) or 0
+    except:
+        return default
+
+def generate_single_csv(report):
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([report.report_title])
+    writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}"])
+    writer.writerow([])
+    writer.writerow(["PVC PIPES"])
+    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
+    writer.writerow([1, "63MM PVC", get_q(report,'qty_63mm'), "6 MTR", f"{get_q(report,'qty_63mm')*6} MTR"])
+    writer.writerow([2, "90MM PVC", get_q(report,'qty_90mm'), "12 MTR", f"{get_q(report,'qty_90mm')*12} MTR"])
+    writer.writerow([3, "110MM PVC", get_q(report,'qty_110mm'), "18 MTR", f"{get_q(report,'qty_110mm')*18} MTR"])
+    pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
+    pvc_mtr = get_q(report,'qty_63mm')*6 + get_q(report,'qty_90mm')*12 + get_q(report,'qty_110mm')*18
+    writer.writerow([f"PVC Total: {pvc} Qty | {pvc_mtr} MTR"])
+    writer.writerow([])
+    writer.writerow(["DI PIPES"])
+    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
+    writer.writerow([1, "150MM DI", get_q(report,'qty_150mm'), "5.5 MTR", f"{get_q(report,'qty_150mm')*5.5} MTR"])
+    di = get_q(report,'qty_150mm')
+    di_mtr = di*5.5
+    writer.writerow([f"DI Total: {di} Qty | {di_mtr} MTR"])
+    return output.getvalue().encode("utf-8")
+
+def generate_single_excel(report):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        wb = Workbook(); ws = wb.active; ws.title = "Report"
+        thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        hdr_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+        hdr_font = Font(bold=True, color="FFFFFF", size=11)
+        ws.merge_cells('A1:D1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
+        ws.merge_cells('A2:D2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name}"; ws['A2'].alignment = Alignment(horizontal='center')
+        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
+        for col in range(1,5):
+            cell = ws.cell(row=4, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
+        for idx, (dia, qty, unit) in enumerate([("63MM PVC", get_q(report,'qty_63mm'), "6 MTR"), ("90MM PVC", get_q(report,'qty_90mm'), "12 MTR"), ("110MM PVC", get_q(report,'qty_110mm'), "18 MTR"), ("150MM DI", get_q(report,'qty_150mm'), "5.5 MTR")], start=1):
+            ws.append([idx, dia, qty, unit])
+            r = ws.max_row
+            for c in range(1,5): ws.cell(row=r, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=r, column=c).border = thin
+        ws.append([]); pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm'); di = get_q(report,'qty_150mm')
+        ws.append(["", "Total PVC", f"{pvc} Qty", ""]); ws.append(["", "Total DI", f"{di} Qty", ""]); ws.append(["", "Grand Total", f"{report.total_qty} Qty", ""])
+        for rr in [ws.max_row-2, ws.max_row-1, ws.max_row]:
+            for c in range(1,5): ws.cell(row=rr, column=c).font = Font(bold=True); ws.cell(row=rr, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=c).border = thin
+        ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 18; ws.column_dimensions['C'].width = 18; ws.column_dimensions['D'].width = 15
+        out = io.BytesIO(); wb.save(out); return out.getvalue()
+    except Exception:
+        return generate_single_csv(report)
+
+def generate_single_pdf(report):
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib import colors
+        output = io.BytesIO(); c = canvas.Canvas(output, pagesize=A4); width, height = A4
+        # Title - BLACK color as per request
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 16)
+        c.drawCentredString(width/2, height-40, report.report_title)
+        c.setFont("Helvetica", 11)
+        c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'}")
+        c.drawCentredString(width/2, height-75, f"Date: {report.report_date.strftime('%d-%m-%Y')}")
+        y = height - 110
+        # PVC PIPES - Center
+        c.setFillColor(colors.HexColor("#059669"))
+        c.setFont("Helvetica-Bold", 13)
+        c.drawCentredString(width/2, y, "PVC PIPES")
+        y -= 20
+        # Header
+        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11)
+        c.drawString(70, y+2, "Sr.No"); c.drawString(140, y+2, "Pipe Dia"); c.drawString(260, y+2, "Quantity"); c.drawString(350, y+2, "UNIT"); c.drawString(430, y+2, "Total MTR")
+        y -= 30; c.setFont("Helvetica", 11)
+        pvc_total = 0
+        pvc_mtr_total = 0
+        for idx, (dia, qty, unit, mtr) in enumerate([
+            ("63MM PVC", get_q(report,'qty_63mm'), "6 MTR", get_q(report,'qty_63mm')*6),
+            ("90MM PVC", get_q(report,'qty_90mm'), "12 MTR", get_q(report,'qty_90mm')*12),
+            ("110MM PVC", get_q(report,'qty_110mm'), "18 MTR", get_q(report,'qty_110mm')*18)
+        ], start=1):
+            if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+            c.setFillColor(colors.black)
+            c.drawString(70, y, str(idx)); c.drawString(140, y, dia); c.drawString(260, y, str(qty)); c.drawString(350, y, unit); c.drawString(430, y, f"{mtr} MTR")
+            y -= 22
+            pvc_total += qty
+            pvc_mtr_total += mtr
+        y -= 5
+        c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11)
+        c.drawString(70, y+2, f"PVC Total: {pvc_total} Qty | {pvc_mtr_total} MTR")
+        y -= 30
+        # DI PIPES - Center
+        c.setFillColor(colors.HexColor("#059669"))
+        c.setFont("Helvetica-Bold", 13)
+        c.drawCentredString(width/2, y, "DI PIPES")
+        y -= 20
+        # DI Header
+        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11)
+        c.drawString(70, y+2, "Sr.No"); c.drawString(140, y+2, "Pipe Dia"); c.drawString(260, y+2, "Quantity"); c.drawString(350, y+2, "UNIT"); c.drawString(430, y+2, "Total MTR")
+        y -= 30; c.setFont("Helvetica", 11)
+        di_qty = get_q(report,'qty_150mm')
+        di_mtr = di_qty * 5.5
+        c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+        c.setFillColor(colors.black)
+        c.drawString(70, y, "1"); c.drawString(140, y, "150MM DI"); c.drawString(260, y, str(di_qty)); c.drawString(350, y, "5.5 MTR"); c.drawString(430, y, f"{di_mtr} MTR")
+        y -= 22
+        y -= 5
+        c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11)
+        c.drawString(70, y+2, f"DI Total: {di_qty} Qty | {di_mtr} MTR")
+        # No Grand Total as per request
+        c.showPage(); c.save(); return output.getvalue()
+    except Exception as e:
+        print(f"PDF error: {e}")
+        return generate_single_csv(report)
+
+def generate_month_csv(title, period_text, t63, t90, t110, t150=0):
+    output = io.StringIO(); writer = csv.writer(output)
+    writer.writerow([title]); writer.writerow([period_text]); writer.writerow([]); writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
+    writer.writerow([1, "63MM PVC", t63, "6 MTR"]); writer.writerow([2, "90MM PVC", t90, "12 MTR"]); writer.writerow([3, "110MM PVC", t110, "18 MTR"]); writer.writerow([4, "150MM DI", t150, "5.5 MTR"]); writer.writerow([])
+    writer.writerow([f"Total PVC: {t63+t90+t110} Qty"]); writer.writerow([f"Total DI: {t150} Qty"]); writer.writerow([f"Grand Total: {t63+t90+t110+t150} Qty"])
+    return output.getvalue().encode("utf-8")
+
+def generate_month_excel(title, period_text, t63, t90, t110, t150=0):
+    try:
+        from openpyxl import Workbook
+        from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+        wb = Workbook(); ws = wb.active; ws.title = "Monthly"
+        thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
+        hdr_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
+        hdr_font = Font(bold=True, color="FFFFFF", size=11)
+        ws.merge_cells('A1:D1'); ws['A1'] = title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
+        ws.merge_cells('A2:D2'); ws['A2'] = period_text; ws['A2'].alignment = Alignment(horizontal='center')
+        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
+        r = ws.max_row
+        for col in range(1,5): cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
+        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6 MTR"), ("90MM PVC", t90, "12 MTR"), ("110MM PVC", t110, "18 MTR"), ("150MM DI", t150, "5.5 MTR")], start=1):
+            ws.append([idx, dia, qty, unit]); rr = ws.max_row
+            for col in range(1,5): ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
+        ws.append([]); ws.append(["", "Total PVC", f"{t63+t90+t110} Qty", ""]); ws.append(["", "Total DI", f"{t150} Qty", ""]); ws.append(["", "Grand Total", f"{t63+t90+t110+t150} Qty", ""])
+        for rr in [ws.max_row-2, ws.max_row-1, ws.max_row]:
+            for col in range(1,5): ws.cell(row=rr, column=col).font = Font(bold=True); ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
+        ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 18; ws.column_dimensions['C'].width = 18; ws.column_dimensions['D'].width = 15
+        out = io.BytesIO(); wb.save(out); return out.getvalue()
+    except Exception:
+        return generate_month_csv(title, period_text, t63, t90, t110, t150)
+
+def generate_month_pdf(title, period_text, t63, t90, t110, t150=0):
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.pdfgen import canvas
+        from reportlab.lib import colors
+        output = io.BytesIO(); c = canvas.Canvas(output, pagesize=A4); w, h = A4
+        c.setFillColor(colors.HexColor("#10B981")); c.rect(0, h-80, w, 80, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 16); c.drawCentredString(w/2, h-35, title)
+        c.setFont("Helvetica", 10); c.drawCentredString(w/2, h-55, period_text)
+        y = h - 120
+        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11); c.drawString(70, y+2, "Sr.No"); c.drawString(150, y+2, "Pipe Dia"); c.drawString(270, y+2, "Quantity"); c.drawString(390, y+2, "UNIT")
+        y -= 30; c.setFont("Helvetica", 11)
+        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6 MTR"), ("90MM PVC", t90, "12 MTR"), ("110MM PVC", t110, "18 MTR"), ("150MM DI", t150, "5.5 MTR")], start=1):
+            if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+            c.setFillColor(colors.black); c.drawString(70, y, str(idx)); c.drawString(150, y, dia); c.drawString(270, y, str(qty)); c.drawString(390, y, unit); y -= 22
+        y -= 10; c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11); c.drawString(70, y+2, f"PVC: {t63+t90+t110} | DI: {t150} | Grand: {t63+t90+t110+t150}")
+        c.showPage(); c.save(); return output.getvalue()
+    except Exception:
+        return generate_month_csv(title, period_text, t63, t90, t110, t150)
+
+ui.add_css("""
+    .spa-hidden { display: none !important; }
+    .report-patti { transition: all 0.15s; cursor: pointer; }
+    .report-patti:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(16,185,129,0.2); border-color: #10B981 !important; }
+    .editable-area .q-field__control { min-height: 48px !important; border-radius: 12px !important; }
+    .editable-area input { font-weight: 700 !important; font-size: 14px !important; }
+    .back-btn { background-color: #d4821e !important; color: black !important; border: 2px solid #b56a17 !important; border-radius: 20px !important; font-weight: bold !important; }
+    .back-btn .q-btn__content { color: black !important; }
+    .date-pill { background: white !important; border: 1.5px solid #e5e7eb !important; border-radius: 9999px !important; box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important; padding: 6px 16px !important; display: flex !important; align-items: center !important; gap: 8px !important; min-width: 145px !important; }
+    .date-pill input { border: none !important; outline: none !important; font-weight: 700 !important; font-size: 13px !important; color: #1f2937 !important; background: transparent !important; width: 100px !important; text-align: center !important; cursor: pointer !important; }
+    .date-pill .q-field__control { background: transparent !important; border: none !important; box-shadow: none !important; min-height: auto !important; height: auto !important; padding: 0 !important; }
+    .date-pill .q-field__control:before, .date-pill .q-field__control:after { display: none !important; }
+    .profile-card { background: white !important; border-radius: 24px !important; box-shadow: 0 10px 30px rgba(0,0,0,0.08) !important; border: 1.5px solid #e0f2e9 !important; }
+    .delete-btn { background: white !important; color: #dc2626 !important; border: 1.5px solid #fecaca !important; border-radius: 9999px !important; font-weight: 700 !important; }
+    .edit-mini-btn { background: white !important; color: #2563eb !important; border: 1.2px solid #bfdbfe !important; border-radius: 12px !important; font-weight: 700 !important; font-size: 11px !important; }
+    .del-mini-btn { background: white !important; color: #dc2626 !important; border: 1.2px solid #fecaca !important; border-radius: 12px !important; font-weight: 700 !important; font-size: 11px !important; }
+    .patti-click-area { cursor: pointer; }
+    .forgot-link { color: #2563eb !important; font-weight: 700 !important; font-size: 13px !important; cursor: pointer !important; }
+""", shared=True)
+
+@ui.page("/reset")
+def reset_page_with_query():
+    try:
+        request = ui.context.client.request
+        token = request.query_params.get("token", "")
+        if not token:
+            token = str(request.url).split("token=")[-1].split("&")[0] if "token=" in str(request.url) else ""
+    except Exception:
+        token = ""
+    return build_reset_content(token)
+
+@ui.page("/reset/{token}")
+def reset_page_with_path(token: str):
+    return build_reset_content(token)
+
+def build_reset_content(token: str):
+    with ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3"):
+        with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
+            with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 p-5 items-center text-white"):
+                ui.icon("lock_reset", size="2.5rem")
+                ui.label("Reset Password (6-digit)").classes("text-xl font-extrabold")
+            with ui.column().classes("w-full p-5 bg-white gap-3") as content_col:
+                db_token_obj = None
+                user = None
+                email = None
+                try:
+                    if HAS_TOKEN_MODEL:
+                        db_token_obj = PasswordResetToken.objects.get(token=token)
+                        age = (timezone.now() - db_token_obj.created_at).total_seconds()
+                        if age > 900:
+                            db_token_obj.delete()
+                            ui.label("Link Expired! (15 min over)").classes("text-red-600 font-bold text-center w-full")
+                            ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-2 bg-blue-600 text-white font-bold")
+                            return
+                        user = db_token_obj.user
+                        email = user.email
+                    else:
+                        raise Exception("No DB model")
+                except Exception as e:
+                    ui.label("Invalid or Expired Link!").classes("text-red-600 font-bold text-center w-full")
+                    ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-3 bg-blue-600 text-white font-bold")
+                    return
+                ui.label(f"Welcome {user.username}").classes("text-lg font-extrabold text-slate-900 text-center w-full")
+                ui.label(f"For: {email}").classes("text-xs font-bold text-slate-600 text-center w-full break-all")
+                ui.label("Change Password (6-digit only)").classes("text-sm font-bold text-indigo-700 mt-2 w-full text-center")
+                new_pwd = ui.input("Enter new password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                re_new_pwd = ui.input("Re-enter new password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                status_lbl = ui.label("").classes("text-xs font-bold text-center w-full")
+                def do_confirm_reset():
+                    p1 = (new_pwd.value or "").strip()
+                    p2 = (re_new_pwd.value or "").strip()
+                    if not is_valid_6digit(p1):
+                        status_lbl.set_text("❌ Password must be exactly 6 digits!")
+                        return
+                    if p1 != p2:
+                        status_lbl.set_text("❌ Both passwords not same!")
+                        return
+                    try:
+                        user.password = make_password(p1)
+                        user.save(update_fields=['password'])
+                        CACHE["users"].pop(email, None)
+                        CACHE["pwd_verified"] = {k:v for k,v in CACHE["pwd_verified"].items() if v != user.id}
+                        if db_token_obj:
+                            db_token_obj.delete()
+                        content_col.clear()
+                        with content_col:
+                            ui.icon("check_circle", size="3rem", color="green")
+                            ui.label("Successfully changed password!").classes("text-base font-extrabold text-green-700 text-center w-full mt-2")
+                            ui.button("Go to Login", icon="login", on_click=lambda: ui.navigate.to("/")).props("rounded no-caps").classes("w-full mt-4 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 shadow-lg")
+                    except Exception as e:
+                        status_lbl.set_text(f"❌ Failed: {e}")
+                ui.button("Confirm (6-digit)", icon="check", on_click=do_confirm_reset).props("rounded no-caps").classes("w-full mt-2 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold py-2.5 shadow-lg")
+
+@ui.page("/")
+def main_spa_page():
+    print("🚀 FINAL 4-PIPE SIMPLE - 63,90,110,150", flush=True)
+    state = {"user": None, "selected_report": None}
+    with ui.column().classes("w-full min-h-screen p-0 m-0 gap-0") as root:
+        login_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3")
+        with login_view:
+            with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0 border-2 border-green-400/50"):
+                with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-green-600 to-teal-600 p-4 items-center text-white"):
+                    ui.icon("bolt", size="2.5rem")
+                    ui.label("6-DIGIT SECURE LOGIN").classes("text-xl font-extrabold")
+                    ui.label("4-PIPE PVC+DI").classes("text-xs")
+                with ui.column().classes("w-full p-5 bg-white gap-3"):
+                    saved_email = app.storage.user.get("saved_email", "")
+                    saved_pwd = app.storage.user.get("saved_password", "")
+                    email_input = ui.input("Email ID", value=saved_email).props("outlined rounded dense").classes("w-full")
+                    pass_input = ui.input("Password (6 digits)", value=saved_pwd, placeholder="6 digits only", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                    login_btn = ui.button("⚡ Log In", icon="bolt").props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg")
+                    status_label = ui.label("").classes("text-xs text-center font-bold text-green-600")
+                    with ui.row().classes("w-full justify-center mt-1"):
+                        forgot_link = ui.label("Forgot password?").classes("forgot-link")
+                    reg_btn = ui.button("Register New Account", icon="person_add").props("outline rounded no-caps").classes("w-full text-emerald-600 font-bold text-sm border-emerald-500 mt-2")
+
+        home_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 py-2 px-1.5 sm:px-4 items-center spa-hidden")
+        filter_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 py-2 px-1.5 sm:px-4 items-center spa-hidden")
+        filter_detail_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 py-2 px-1.5 sm:px-4 items-center spa-hidden")
+        profile_view = ui.column().classes("w-full min-h-screen bg-gradient-to-br from-indigo-100 via-purple-50 to-pink-100 p-3 items-center justify-center spa-hidden")
+        register_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3 spa-hidden")
+        forgot_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3 spa-hidden")
+
+        def show_login():
+            state["user"] = None
+            login_view.classes(remove="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+
+        def show_login_as_logout():
+            state["user"] = None
+            saved_e = app.storage.user.get("saved_email", "")
+            saved_p = app.storage.user.get("saved_password", "")
+            app.storage.user.clear()
+            app.storage.user["saved_email"] = saved_e
+            app.storage.user["saved_password"] = saved_p
+            show_login()
+
+        def show_home():
+            login_view.classes(add="spa-hidden")
+            home_view.classes(remove="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+            build_home()
+
+        def show_filter():
+            login_view.classes(add="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(remove="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+            build_filter()
+
+        def show_filter_detail(report):
+            state["selected_report"] = report
+            login_view.classes(add="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(remove="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+            build_filter_detail(report)
+
+        def show_profile():
+            login_view.classes(add="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(remove="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+            build_profile()
+
+        def show_register():
+            login_view.classes(add="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(remove="spa-hidden")
+            forgot_view.classes(add="spa-hidden")
+
+        def show_forgot():
+            login_view.classes(add="spa-hidden")
+            home_view.classes(add="spa-hidden")
+            filter_view.classes(add="spa-hidden")
+            filter_detail_view.classes(add="spa-hidden")
+            profile_view.classes(add="spa-hidden")
+            register_view.classes(add="spa-hidden")
+            forgot_view.classes(remove="spa-hidden")
+            build_forgot()
+
+        def build_forgot():
+            forgot_view.clear()
+            with forgot_view:
+                with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
+                    with ui.column().classes("w-full bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 p-5 items-center text-white"):
+                        ui.icon("lock_reset", size="2.5rem")
+                        ui.label("Forgot Password - FREE").classes("text-xl font-extrabold")
+                    with ui.column().classes("w-full p-5 bg-white gap-3"):
+                        forgot_email = ui.input("Email ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
+                        forgot_status = ui.label("").classes("text-xs font-bold text-center w-full")
+                        def send_reset_link():
+                            email = (forgot_email.value or "").strip()
+                            if not email:
+                                forgot_status.set_text("❌ Enter Email ID!")
+                                return
+                            try:
+                                user = AppUser.objects.get(email=email)
+                            except AppUser.DoesNotExist:
+                                forgot_status.set_text("❌ Email not registered!")
+                                return
+                            token = secrets.token_urlsafe(32)
+                            if HAS_TOKEN_MODEL:
+                                PasswordResetToken.objects.filter(user=user).delete()
+                                PasswordResetToken.objects.create(user=user, token=token)
+                            base_url = os.getenv("RENDER_EXTERNAL_URL", os.getenv("BASE_URL", "https://site-collection.onrender.com"))
+                            if "localhost" in base_url or not base_url:
+                                base_url = "https://site-collection.onrender.com"
+                            reset_link = f"{base_url}/reset/{token}"
+                            forgot_status.set_text("⏳ Sending mail...")
+                            success, msg = send_reset_email_resend_http(email, user.username, reset_link)
+                            if success:
+                                forgot_status.set_text("✅ Mail sent! Check inbox & spam")
+                            else:
+                                forgot_status.set_text(f"❌ {msg}")
+                        ui.button("Send Reset Link - FREE", icon="send", on_click=send_reset_link).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
+                        ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
+
+        def build_home():
+            home_view.clear()
+            user = state["user"]
+            if not user:
+                show_login()
+                return
+            try:
+                fresh_user = AppUser.objects.get(id=user.id)
+                CACHE["users"][fresh_user.email] = fresh_user
+                state["user"] = fresh_user
+                user = fresh_user
+            except Exception:
+                pass
+            with home_view:
+                with ui.column().classes("w-full max-w-md items-center gap-2"):
+                    with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
+                        ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-xs shadow-sm")
+                        today_str = today_ist().isoformat()
+                        with ui.row().classes("date-pill items-center justify-center"):
+                            home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-xs font-bold")
+                        with ui.button(icon="account_circle").props("round unelevated dense").classes("bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"):
+                            with ui.menu().classes("rounded-xl shadow-xl border border-purple-200"):
+                                with ui.menu_item(on_click=show_profile).classes("hover:bg-purple-50 font-semibold"):
+                                    with ui.row().classes("items-center gap-2"): ui.icon("person", color="purple"); ui.label("Profile")
+                                ui.separator()
+                                with ui.menu_item(on_click=show_filter).classes("hover:bg-purple-50 font-semibold"):
+                                    with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
+                    with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-3 sm:p-5 border-2 border-green-200"):
+                        with ui.row().classes("w-full justify-center mb-2.5"):
+                            title_input = ui.input(value=user.default_report_title).props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
+                            def save_title_persist(e):
+                                new_title = (e.value if hasattr(e, 'value') else title_input.value or "").strip()
+                                if not new_title or new_title == user.default_report_title:
+                                    return
+                                try:
+                                    user.default_report_title = new_title
+                                    user.save(update_fields=['default_report_title'])
+                                    CACHE["users"][user.email] = user
+                                    state["user"] = user
+                                except Exception:
+                                    pass
+                            title_input.on_value_change(save_title_persist)
+                        def get_areas():
+                            if user.id in CACHE["areas"]:
+                                return CACHE["areas"][user.id]
+                            areas = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True)[:100])
+                            CACHE["areas"][user.id] = areas
+                            return areas
+                        saved_areas = get_areas()
+                        with ui.column().classes("w-full mb-2.5 gap-1"):
+                            ui.label("Enter Area *").classes("text-xs font-bold text-green-700 ml-1")
+                            area_input = ui.input(placeholder="Type area name...", value="").props("outlined rounded dense color=green").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
+                            with ui.row().classes("w-full gap-1 flex-wrap") as suggestions_row:
+                                def refresh_suggestions():
+                                    suggestions_row.clear()
+                                    with suggestions_row:
+                                        for area in saved_areas[:8]:
+                                            def make_click(a=area):
+                                                def click():
+                                                    area_input.value = a
+                                                    area_input.update()
+                                                return click
+                                            ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2 py-0")
+                                refresh_suggestions()
+                            def on_area_save(e):
+                                val = (e.value or "").strip() if hasattr(e, 'value') else (area_input.value or "").strip()
+                                if val and val not in saved_areas:
+                                    SavedArea.objects.get_or_create(user=user, area_name=val)
+                                    CACHE["areas"].pop(user.id, None)
+                                    refresh_suggestions()
+                            area_input.on_value_change(on_area_save)
+                        with ui.row().classes("w-full justify-center items-center gap-1.5 mb-1.5"):
+                            ui.icon("bolt", color="green", size="1.3rem"); ui.label("4-PIPE PVC+DI").classes("text-base font-extrabold text-slate-800")
+                        with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
+                            with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
+                                ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[10px]")
+                            with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
+                                with ui.column().classes("p-1.5 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
+                            with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
+                                ui.label("6 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px]")
+                                ui.label("12 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px] border-x-2 border-indigo-900")
+                                ui.label("18 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px] border-r-2 border-indigo-900")
+                                ui.label("5.5 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px]")
+                            # NEW ROW - Count * MTR = Total MTR - Live multiplication
+                            with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
+                                m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px]")
+                                m90_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px] border-x-2 border-indigo-900")
+                                m110_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px] border-r-2 border-indigo-900")
+                                m150_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px]")
+                            with ui.column().classes("w-full gap-0"):
+                                with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
+                                    pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-2 font-bold text-green-300 text-[11px] border-b border-white/10")
+                                with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-center"):
+                                    di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2 font-bold text-cyan-300 text-[11px]")
+                                with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
+                                    mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-2 font-bold text-yellow-200 text-[11px]")
+                        def parse_qty(val):
+                            try:
+                                if val in (None, ""):
+                                    return 0
+                                s = str(val).strip()
+                                # Reject negative
+                                if s.startswith("-"):
+                                    return 0
+                                # Reject decimal like 3.2, 9.9
+                                if "." in s:
+                                    if s.replace(".","",1).replace("-","",1).isdigit():
+                                        return int(float(s)) if float(s).is_integer() else 0
+                                    return 0
+                                v = int(float(s))
+                                if v < 0:
+                                    return 0
+                                return v
+                            except:
+                                return 0
+                        def is_valid_int(val):
+                            # Only integer allowed: 4,7,48,8 - not 3.2
+                            try:
+                                if val in (None, ""):
+                                    return True
+                                s = str(val).strip()
+                                if "." in s:
+                                    return False
+                                int(s)
+                                return True
+                            except:
+                                return False
+                        def update_live_preview():
+                            # Integer only + No negative check
+                            for c in [c63, c90, c110, c150]:
+                                if c.value and c.value not in (None, ""):
+                                    s = str(c.value).strip()
+                                    if "." in s:
+                                        ui.notify("Only integer allowed! 3.2 not allowed, use 3", type="warning", position="top")
+                                        c.value = s.split(".")[0]
+                                        c.update()
+                                    if s.startswith("-") or (s.lstrip("-").isdigit() and int(s) < 0):
+                                        ui.notify("Negative not allowed! -5 not allowed", type="warning", position="top")
+                                        c.value = "0"
+                                        c.update()
+                            q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
+                            pvc_total_lbl.set_text(f"Total PVC Pipes : {q63+q90+q110} Quantity")
+                            di_total_lbl.set_text(f"Total DI Pipes : {q150} Quantity")
+                            # MTR calculation - Count * Unit - Live
+                            m63 = q63 * 6
+                            m90 = q90 * 12
+                            m110 = q110 * 18
+                            m150 = q150 * 5.5
+                            m63_lbl.set_text(f"{m63} MTR" if m63%1==0 else f"{m150} MTR")
+                            m90_lbl.set_text(f"{m90} MTR")
+                            m110_lbl.set_text(f"{m110} MTR")
+                            m150_lbl.set_text(f"{m150} MTR" if m150==int(m150) else f"{m150} MTR")
+                            # Fix 63
+                            m63_lbl.set_text(f"{int(m63)} MTR")
+                            total_mtr = m63 + m90 + m110 + m150
+                            mtr_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
+                            # MTR labels
+                            m63_lbl.set_text(f"{int(q63*6)} MTR")
+                            m90_lbl.set_text(f"{int(q90*12)} MTR")
+                            m110_lbl.set_text(f"{int(q110*18)} MTR")
+                            # 5.5 may be float
+                            if q150*5.5 == int(q150*5.5):
+                                m150_lbl.set_text(f"{int(q150*5.5)} MTR")
+                            else:
+                                m150_lbl.set_text(f"{q150*5.5} MTR")
+                        c63.on_value_change(lambda: update_live_preview()); c90.on_value_change(lambda: update_live_preview()); c110.on_value_change(lambda: update_live_preview()); c150.on_value_change(lambda: update_live_preview())
+                        def save_daily_report():
+                            q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
+                            try:
+                                selected_date = datetime.datetime.strptime((home_date_input.value or "").strip(), "%Y-%m-%d").date()
+                            except Exception:
+                                selected_date = today_ist()
+                            area_val = (area_input.value or "").strip()
+                            if not area_val: ui.notify("Please Enter Area!", type="warning", position="top"); return
+                            if area_val not in (CACHE["areas"].get(user.id, [])):
+                                SavedArea.objects.get_or_create(user=user, area_name=area_val)
+                                CACHE["areas"].pop(user.id, None)
+                            current_title = (title_input.value or "").strip() or user.default_report_title
+                            if current_title != user.default_report_title:
+                                user.default_report_title = current_title
+                                user.save(update_fields=['default_report_title'])
+                                CACHE["users"][user.email] = user
+                            try:
+                                DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                            except Exception as ex:
+                                print(f"Save with 150 failed: {ex}, trying old")
+                                DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                            c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; area_input.value = ""; update_live_preview()
+                            get_areas(); refresh_suggestions()
+                            ui.notify(f"Saved! PVC:{q63+q90+q110} DI:{q150} Total:{q63+q90+q110+q150}", type="positive", position="top")
+                        ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
+
+        def build_filter():
+            filter_view.clear()
+            user = state["user"]
+            if not user:
+                show_login()
+                return
+            try:
+                fresh = AppUser.objects.get(id=user.id)
+                user.default_report_title = fresh.default_report_title
+                state["user"] = fresh
+                user = fresh
+            except:
+                pass
+            today = today_ist(); months = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}; years = {y: str(y) for y in range(today.year - 5, today.year + 2)}
+            with filter_view:
+                with ui.column().classes("w-full max-w-md items-center gap-2"):
+                    with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white p-3 sm:p-5 border-2 border-green-200"):
+                        with ui.row().classes("w-full justify-between items-center mb-2"):
+                            ui.button("Back to Home", icon="arrow_back", on_click=show_home).props("flat rounded no-caps").classes("back-btn text-xs")
+                        with ui.row().classes("w-full justify-center my-1.5"): 
+                            ui.label(user.default_report_title).classes("w-full px-2 py-1.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 text-slate-900 font-extrabold text-center text-xs")
+                        with ui.grid(columns=3).classes("w-full gap-1.5 my-2.5 bg-green-50 p-2 rounded-2xl border border-green-200"):
+                            date_options = {"": "Select Date", **{str(d): f"{d:02d}" for d in range(1, 32)}}; day_select = ui.select(options=date_options, value="", label="Date").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
+                            month_select = ui.select(options=months, value=today.month, label="Month").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
+                            year_select = ui.select(options=years, value=today.year, label="Year").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
+                        table_container = ui.column().classes("w-full mt-1 gap-2")
+                        def load_table_data():
+                            table_container.clear()
+                            sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
+                            base_qs = DailyReport.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
+                            if not base_qs.exists():
+                                with table_container:
+                                    with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
+                                        ui.icon("info", size="2.2rem", color="red"); ui.label("No Data").classes("text-sm font-extrabold text-red-700 mt-1")
+                                return
+                            if sel_day:
+                                qs = base_qs.filter(report_date__day=int(sel_day)).order_by('-id')
+                                period_text = f"Date: {int(sel_day):02d} {months[sel_month]} {sel_year}"
+                                with table_container:
+                                    if not qs.exists():
+                                        with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
+                                            ui.icon("info", size="2.2rem", color="red"); ui.label("No Data").classes("text-sm font-extrabold text-red-700 mt-1")
+                                        return
+                                    agg = qs.aggregate(t=Sum('total_qty')); grand_total = agg['t'] or 0
+                                    with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
+                                        ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {grand_total} Qty", color="green").classes("text-xs font-bold px-2 py-1")
+                                    for report in qs[:50]:
+                                        area_display = report.area_name or "No Area"
+                                        with ui.card().classes("report-patti w-full rounded-2xl border-2 border-green-200 bg-gradient-to-r from-white to-green-50 p-0 overflow-hidden shadow-md"):
+                                            with ui.column().classes("patti-click-area w-full p-3 pb-1").on("click", lambda r=report: show_filter_detail(r)):
+                                                with ui.row().classes("w-full justify-between items-center"):
+                                                    with ui.row().classes("items-center gap-2"): ui.icon("location_on", color="green", size="1.1rem"); ui.label(area_display).classes("font-extrabold text-sm text-indigo-900")
+                                                    ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
+                                                ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
+                                                with ui.row().classes("w-full justify-between items-center mt-1"):
+                                                    ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[11px] font-bold text-slate-600")
+                                                    ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
+                                            with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
+                                                edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1")
+                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1")
+                                                with ui.dialog() as edit_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"):
+                                                    with ui.column().classes("w-full p-0 gap-0"):
+                                                        with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-3 items-center justify-between text-white"):
+                                                            ui.label(f"✏ Edit - {area_display}").classes("font-extrabold text-sm text-white")
+                                                            ui.button(icon="close", on_click=edit_dialog.close).props("flat round dense color=white").classes("text-white")
+                                                        with ui.column().classes("w-full p-4 gap-3 bg-white"):
+                                                            ui.label("Date").classes("text-xs font-bold text-slate-700")
+                                                            e_date = ui.input(value=report.report_date.isoformat()).props("type=date outlined dense").classes("w-full")
+                                                            ui.label("Area Name").classes("text-xs font-bold text-slate-700")
+                                                            e_area = ui.input(value=report.area_name).props("outlined dense").classes("w-full font-bold")
+                                                            ui.label("Report Title").classes("text-xs font-bold text-slate-700")
+                                                            e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
+                                                            with ui.grid(columns=4).classes("w-full gap-2"):
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("63MM PVC").classes("text-xs font-bold text-center")
+                                                                    e_63 = ui.input(value=str(get_q(report,'qty_63mm'))).props("type=number outlined dense").classes("w-full")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("90MM PVC").classes("text-xs font-bold text-center")
+                                                                    e_90 = ui.input(value=str(get_q(report,'qty_90mm'))).props("type=number outlined dense").classes("w-full")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("110MM PVC").classes("text-xs font-bold text-center")
+                                                                    e_110 = ui.input(value=str(get_q(report,'qty_110mm'))).props("type=number outlined dense").classes("w-full")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("150MM DI").classes("text-xs font-bold text-center")
+                                                                    e_150 = ui.input(value=str(get_q(report,'qty_150mm'))).props("type=number outlined dense").classes("w-full")
+                                                            with ui.row().classes("w-full justify-between gap-3 mt-2"):
+                                                                ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
+                                                                save_edit_btn = ui.button("OK", icon="check").props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
+                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, dlg=edit_dialog):
+                                                                def do_save():
+                                                                    try:
+                                                                        try:
+                                                                            new_date = datetime.datetime.strptime((ed.value or "").strip(), "%Y-%m-%d").date()
+                                                                        except:
+                                                                            new_date = rpt.report_date
+                                                                        new_area = (ea.value or "").strip() or rpt.area_name
+                                                                        new_title = (et.value or "").strip() or rpt.report_title
+                                                                        def pq(v):
+                                                                            try: return int(float(v)) if v not in (None, "") else 0
+                                                                            except: return 0
+                                                                        q63 = pq(e63.value); q90 = pq(e90.value); q110 = pq(e110.value); q150 = pq(e150.value)
+                                                                        rpt.report_date = new_date
+                                                                        rpt.area_name = new_area
+                                                                        rpt.report_title = new_title
+                                                                        rpt.qty_63mm = q63; rpt.qty_90mm = q90; rpt.qty_110mm = q110
+                                                                        try: rpt.qty_150mm = q150
+                                                                        except: pass
+                                                                        try: rpt.total_pvc = q63+q90+q110; rpt.total_di = q150
+                                                                        except: pass
+                                                                        rpt.total_qty = q63+q90+q110+q150
+                                                                        rpt.price_sum = float(q63+q90+q110+q150)
                                                                         rpt.save()
                                                                         ui.notify("Updated!", type="positive")
                                                                         dlg.close()
@@ -145,4 +928,124 @@
                                             cancel_btn = ui.button("Cancel", icon="close").props("flat rounded no-caps").classes("flex-1 font-bold text-slate-600 bg-slate-100")
                                             ok_btn = ui.button("OK, Delete", icon="check").props("rounded no-caps").classes("flex-1 bg-red-600 text-white font-bold shadow-md")
                                         def do_cancel():
-                                            delete_dialo
+                                            delete_dialog.close()
+                                        def do_delete():
+                                            try:
+                                                email = user.email
+                                                user_id = user.id
+                                                DailyReport.objects.filter(user_id=user_id).delete()
+                                                SavedArea.objects.filter(user_id=user_id).delete()
+                                                if HAS_TOKEN_MODEL:
+                                                    PasswordResetToken.objects.filter(user_id=user_id).delete()
+                                                AppUser.objects.filter(id=user_id).delete()
+                                                CACHE["users"].pop(email, None)
+                                                CACHE["areas"].pop(user_id, None)
+                                                app.storage.user.clear()
+                                                ui.notify(f"Account {email} deleted!", type="positive", position="top")
+                                                delete_dialog.close()
+                                                show_login()
+                                            except Exception as e:
+                                                ui.notify(f"Delete failed: {e}", type="negative", position="top")
+                                        cancel_btn.on_click(do_cancel)
+                                        ok_btn.on_click(do_delete)
+                            delete_btn.on_click(delete_dialog.open)
+                            def do_logout():
+                                state["user"] = None
+                                saved_e = app.storage.user.get("saved_email", "")
+                                saved_p = app.storage.user.get("saved_password", "")
+                                app.storage.user.clear()
+                                app.storage.user["saved_email"] = saved_e
+                                app.storage.user["saved_password"] = saved_p
+                                show_login()
+                            logout_btn.on_click(do_logout)
+
+        with register_view:
+            with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
+                with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 p-5 items-center text-white"):
+                    ui.icon("person_add", size="2.5rem"); ui.label("Create Account (6-digit)").classes("text-xl font-extrabold")
+                with ui.column().classes("w-full p-5 bg-white gap-3"):
+                    uname = ui.input("User name").props("outlined rounded dense").classes("w-full")
+                    email = ui.input("Email id").props("outlined rounded dense").classes("w-full")
+                    pwd = ui.input("Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                    re_pwd = ui.input("Retype password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
+                    def handle_register():
+                        u_val = (uname.value or "").strip(); e_val = (email.value or "").strip(); p_val = (pwd.value or "").strip(); rp_val = (re_pwd.value or "").strip()
+                        if not u_val or not e_val: ui.notify("Enter User name and Email!", type="warning", position="top"); return
+                        if not is_valid_6digit(p_val):
+                            ui.notify("Password must be exactly 6 digits! e.g., 123456", type="negative", position="top"); return
+                        if p_val != rp_val: ui.notify("Passwords not same!", type="negative", position="top"); return
+                        if AppUser.objects.filter(email=e_val).exists(): ui.notify("Already registered!", type="negative", position="top"); return
+                        user = AppUser.objects.create(username=u_val, email=e_val, password=make_password(p_val), default_report_title="Veraval site daily progress report")
+                        CACHE["users"][e_val] = user
+                        pwd_key = hashlib.sha256(f"{e_val}:{p_val}".encode()).hexdigest()
+                        CACHE["pwd_verified"][pwd_key] = user.id
+                        app.storage.user["saved_email"] = e_val
+                        app.storage.user["saved_password"] = p_val
+                        ui.notify("Account created!", type="positive", position="top")
+                        show_login()
+                    ui.button("Register (6-digit)", icon="check_circle", on_click=handle_register).props("rounded no-caps").classes("w-full py-2.5 mt-1 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-bold text-base shadow-lg")
+                    ui.button("Back", icon="arrow_back", on_click=show_login).props("flat no-caps").classes("back-btn w-full font-semibold text-sm mt-1")
+
+        async def handle_login():
+            email = (email_input.value or "").strip()
+            pwd = (pass_input.value or "").strip()
+            if not email or not pwd:
+                ui.notify("Enter Email & Password!", type="warning", position="top")
+                return
+            if not is_valid_6digit(pwd):
+                ui.notify("Password must be exactly 6 digits!", type="warning", position="top")
+                return
+            pwd_key = hashlib.sha256(f"{email}:{pwd}".encode()).hexdigest()
+            if pwd_key in CACHE["pwd_verified"]:
+                user_id = CACHE["pwd_verified"][pwd_key]
+                cached_user = CACHE["users"].get(email)
+                if cached_user and cached_user.id == user_id:
+                    state["user"] = cached_user
+                    app.storage.user["logged_in_user_id"] = cached_user.id
+                    app.storage.user["saved_email"] = email
+                    app.storage.user["saved_password"] = pwd
+                    status_label.set_text("✅ Logged in (cached)")
+                    show_home()
+                    return
+            status_label.set_text("⏳ Verifying...")
+            login_btn.props("loading")
+            try:
+                def get_user_and_check():
+                    try:
+                        u = AppUser.objects.get(email=email)
+                    except AppUser.DoesNotExist:
+                        return None, False
+                    is_ok = check_password(pwd, u.password)
+                    return u, is_ok
+                quick_user, is_valid = await run.io_bound(get_user_and_check)
+                if not quick_user:
+                    status_label.set_text("❌ User not found")
+                    ui.notify("User not found! Register first.", type="negative", position="top")
+                    return
+                if not is_valid:
+                    status_label.set_text("❌ Invalid password")
+                    ui.notify("❌ Invalid password!", type="negative", position="top")
+                    return
+                CACHE["users"][email] = quick_user
+                CACHE["pwd_verified"][pwd_key] = quick_user.id
+                state["user"] = quick_user
+                app.storage.user["logged_in_user_id"] = quick_user.id
+                app.storage.user["saved_email"] = email
+                app.storage.user["saved_password"] = pwd
+                status_label.set_text("✅ Logged in")
+                show_home()
+            except Exception as e:
+                print(f"❌ Login error: {e}\n{traceback.format_exc()}", flush=True)
+                status_label.set_text(f"❌ Error: {str(e)[:80]}")
+                ui.notify(f"Login failed: {e}", type="negative", position="top")
+            finally:
+                login_btn.props(remove="loading")
+
+        login_btn.on_click(handle_login)
+        reg_btn.on_click(show_register)
+        forgot_link.on("click", show_forgot)
+        show_login()
+
+if __name__ in {"__main__", "__mp_main__"}:
+    print(f"🚀 FINAL SIMPLE 4-PIPE Starting on 0.0.0.0:{PORT}", flush=True)
+    ui.run(host="0.0.0.0", port=PORT, title="4-PIPE SIMPLE", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
