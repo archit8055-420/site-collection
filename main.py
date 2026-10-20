@@ -619,8 +619,6 @@ def main_spa_page():
                     with ui.column().classes("w-full p-5 bg-white gap-3"):
                         forgot_email = ui.input("Email ID / User ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
                         forgot_status = ui.label("").classes("text-sm font-bold text-center w-full py-1")
-                        
-                        # Container for new password fields - initially empty, will be filled after ID verified
                         reset_area = ui.column().classes("w-full gap-3 mt-1")
                         
                         async def do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, verified_email):
@@ -688,7 +686,6 @@ def main_spa_page():
                                     reset_area.clear()
                                     return
                                 forgot_status.set_text(f"✅ Found: {user.username} ({user.email})")
-                                # Now show new password fields - CLEAR and REBUILD
                                 reset_area.clear()
                                 with reset_area:
                                     ui.separator().classes("my-2")
@@ -702,35 +699,8 @@ def main_spa_page():
                         
                         ui.button("Verify ID & Reset Direct", icon="verified_user", on_click=verify_id).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg mt-2")
                         ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
-                        
-                        async def verify_id():
-                            email = (forgot_email.value or "").strip()
-                            if not email:
-                                forgot_status.set_text("❌ Enter Email ID / User ID!")
-                                return
-                            forgot_status.set_text("⏳ Checking ID...")
-                            try:
-                                def get_user():
-                                    try:
-                                        return AppUser.objects.get(email=email)
-                                    except AppUser.DoesNotExist:
-                                        try:
-                                            return AppUser.objects.get(username=email)
-                                        except AppUser.DoesNotExist:
-                                            return None
-                                user = await run.io_bound(get_user)
-                                if not user:
-                                    forgot_status.set_text("❌ ID not registered! Check Email/Username")
-                                    reset_container.classes(add="hidden")
-                                    return
-                                forgot_status.set_text(f"✅ Found: {user.username} ({user.email}) - Now set new password below")
-                                reset_container.classes(remove="hidden")
-                                # Scroll to reset
-                            except Exception as e:
-                                forgot_status.set_text(f"❌ Error: {e}")
-                        
-                        ui.button("Verify ID & Reset Direct", icon="verified_user", on_click=verify_id).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
-                        ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
+
+
 
         def build_home():
             home_view.clear()
