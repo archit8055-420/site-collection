@@ -833,13 +833,13 @@ def main_spa_page():
                             # +Add MTR Buttons Row - NEW FEATURE
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center border-t border-indigo-900"):
                                 with ui.column().classes("p-0.5 items-center w-full"):
-                                    add_63_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
+                                    add_63_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
                                 with ui.column().classes("p-0.5 items-center border-x-2 border-indigo-900 w-full"):
-                                    add_90_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
+                                    add_90_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
                                 with ui.column().classes("p-0.5 items-center border-r-2 border-indigo-900 w-full"):
-                                    add_110_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
+                                    add_110_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
                                 with ui.column().classes("p-0.5 items-center w-full"):
-                                    add_150_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[11px] bg-red-50 text-red-600 font-bold border border-red-200 px-2 py-1")
+                                    add_150_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
                             
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
                                 ui.label("6MTR per PIPES").classes("py-1.5 font-extrabold text-indigo-900 text-[11px]")
@@ -1119,19 +1119,19 @@ def main_spa_page():
                                             with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
                                                 edit_btn = ui.button("Edit", icon="edit").props("dense rounded").classes("px-4 py-1.5 bg-yellow-400 text-black font-extrabold text-[13px] border-2 border-yellow-500 shadow-sm")
                                                 del_btn = ui.button("Delete", icon="delete").props("dense rounded").classes("px-4 py-1.5 bg-red-600 text-yellow-200 font-extrabold text-[13px] border-2 border-red-700 shadow-md")
-                                                with ui.dialog() as edit_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"):
-                                                    with ui.column().classes("w-full p-0 gap-0"):
-                                                        with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-3 items-center justify-between text-white"):
-                                                            ui.label(f"✏ Edit - {area_display}").classes("font-extrabold text-sm text-white")
-                                                            ui.button(icon="close", on_click=edit_dialog.close).props("flat round dense color=white").classes("text-white")
-                                                        with ui.column().classes("w-full p-4 gap-3 bg-white"):
-                                                            ui.label("Date").classes("text-xs font-bold text-slate-700")
+                                                with ui.dialog() as edit_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col"):
+                                                    with ui.column().classes("w-full p-0 gap-0 flex flex-col h-full"):
+                                                        with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-2.5 items-center justify-between text-white shrink-0"):
+                                                            ui.label(f"✏ Edit - {area_display}").classes("font-extrabold text-[12px] text-white")
+                                                            ui.button(icon="close", on_click=edit_dialog.close).props("flat round dense color=white size=sm").classes("text-white")
+                                                        with ui.column().classes("w-full p-2.5 gap-1.5 bg-white overflow-y-auto flex-1"):
+                                                            ui.label("Date").classes("text-[11px] font-bold text-slate-700")
                                                             e_date = ui.input(value=report.report_date.isoformat()).props("type=date outlined dense").classes("w-full")
-                                                            ui.label("Area Name").classes("text-xs font-bold text-slate-700")
+                                                            ui.label("Area Name").classes("text-[11px] font-bold text-slate-700")
                                                             e_area = ui.input(value=report.area_name).props("outlined dense").classes("w-full font-bold")
-                                                            ui.label("Labour Name").classes("text-xs font-bold text-slate-700")
+                                                            ui.label("Labour Name").classes("text-[11px] font-bold text-slate-700")
                                                             e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
-                                                            ui.label("Report Title").classes("text-xs font-bold text-slate-700")
+                                                            ui.label("Report Title").classes("text-[11px] font-bold text-slate-700")
                                                             e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
                                                             ui.label("PVC & DI Quantity").classes("text-[13px] font-extrabold text-green-700 mt-2")
                                                             with ui.grid(columns=4).classes("w-full gap-2"):
@@ -1161,9 +1161,9 @@ def main_spa_page():
                                                                 with ui.column().classes("gap-1"):
                                                                     ui.label("150MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
                                                                     e_extra_150 = ui.input(value=str(get_q(report,'extra_150mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
-                                                            with ui.row().classes("w-full justify-between gap-3 mt-2"):
-                                                                ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
-                                                                save_edit_btn = ui.button("OK", icon="check").props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
+                                                        with ui.row().classes("w-full justify-between gap-2 p-2 bg-white border-t shrink-0"):
+                                                            ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded dense").classes("flex-1 bg-slate-100 text-[12px]")
+                                                            save_edit_btn = ui.button("OK", icon="check").props("rounded dense").classes("flex-1 bg-blue-600 text-white font-bold text-[12px]")
                                                             def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, dlg=edit_dialog, ex63=e_extra_63, ex90=e_extra_90, ex110=e_extra_110, ex150=e_extra_150):
                                                                 def do_save():
                                                                     try:
@@ -1262,7 +1262,20 @@ def main_spa_page():
                                             ui.button("As Excel", icon="description", on_click=do_m_excel).props("outline rounded").classes("w-full font-bold text-sm border-green-500 text-green-600")
                                             ui.button("As PDF", icon="picture_as_pdf", on_click=do_m_pdf).props("outline rounded").classes("w-full font-bold text-sm border-red-500 text-red-600")
                                     ui.button("📥 Download", icon="download", on_click=month_download_dialog.open).props("rounded no-caps").classes("w-full mt-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-2.5 shadow-md")
-                        day_select.on_value_change(lambda: load_table_data()); month_select.on_value_change(lambda: load_table_data()); year_select.on_value_change(lambda: load_table_data()); load_table_data()
+                        def safe_load(*_):
+                            try:
+                                load_table_data()
+                            except Exception as e:
+                                print(f"Filter load error: {e}")
+                                try:
+                                    with table_container:
+                                        ui.label(f"Load error: {e}").classes("text-xs text-red-500")
+                                except:
+                                    pass
+                        day_select.on_value_change(safe_load)
+                        month_select.on_value_change(safe_load)
+                        year_select.on_value_change(safe_load)
+                        ui.timer(0.15, safe_load, once=True)
 
         def build_filter_detail(report):
             filter_detail_view.clear()
