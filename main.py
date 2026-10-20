@@ -929,7 +929,7 @@ def main_spa_page():
                                                     ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
                                             with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
                                                 edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1 bg-yellow-300 text-black font-bold border border-yellow-400")
-                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-500 text-white font-bold")
+                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-600 text-yellow-300 font-bold border border-red-700 shadow-md")
                                                 with ui.dialog() as edit_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"):
                                                     with ui.column().classes("w-full p-0 gap-0"):
                                                         with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-3 items-center justify-between text-white"):
