@@ -1,3 +1,4 @@
+
 import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
 print("🚀 FINAL VERAVAL TRACKER Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -55,8 +56,10 @@ def ensure_neon_fast():
             # Add columns - Postgres uses ADD COLUMN IF NOT EXISTS, SQLite doesn't support IF NOT EXISTS for column
             is_sqlite = connection.vendor == 'sqlite'
             if is_sqlite:
-                # SQLite - try to add, ignore if exists
+                # SQLite - try to add, ignore if exists - ALL MISSING COLUMNS
                 for sql in [
+                    "ALTER TABLE models_app_appuser ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;",
+                    "ALTER TABLE models_app_savedarea ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN labour_name VARCHAR(150) DEFAULT '';",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN qty_150mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_pvc REAL DEFAULT 0;",
@@ -66,6 +69,12 @@ def ensure_neon_fast():
                     "ALTER TABLE models_app_dailyreport ADD COLUMN extra_110mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN extra_150mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_mtr REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN count_63mm INTEGER DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN count_90mm INTEGER DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN count_110mm INTEGER DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN count_150mm INTEGER DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;",
+                    "ALTER TABLE models_app_savedlabour ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;",
                 ]:
                     try:
                         cursor.execute(sql)
@@ -78,13 +87,22 @@ def ensure_neon_fast():
                             id INTEGER PRIMARY KEY AUTOINCREMENT,
                             user_id INTEGER NOT NULL,
                             labour_name VARCHAR(150) NOT NULL,
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                             UNIQUE(user_id, labour_name)
                         );
                     """)
                 except Exception as e:
                     print(f"Labour table create skip: {e}")
             else:
-                # Postgres (Neon)
+                # Postgres (Neon) - Fix created_at missing + all extra columns
+                # AppUser table
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_report_title VARCHAR(255) DEFAULT 'Veraval site';")
+                # SavedArea
+                cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
+                # SavedLabour
+                cursor.execute("ALTER TABLE models_app_savedlabour ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
+                # DailyReport
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS qty_150mm DOUBLE PRECISION DEFAULT 0;")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_pvc DOUBLE PRECISION DEFAULT 0;")
@@ -94,14 +112,22 @@ def ensure_neon_fast():
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS extra_110mm DOUBLE PRECISION DEFAULT 0;")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS extra_150mm DOUBLE PRECISION DEFAULT 0;")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_mtr DOUBLE PRECISION DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS count_63mm INTEGER DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS count_90mm INTEGER DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS count_110mm INTEGER DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS count_150mm INTEGER DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 cursor.execute("""
                     CREATE TABLE IF NOT EXISTS models_app_savedlabour (
                         id BIGSERIAL PRIMARY KEY,
                         user_id BIGINT NOT NULL REFERENCES models_app_appuser(id) ON DELETE CASCADE,
                         labour_name VARCHAR(150) NOT NULL,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
                         UNIQUE(user_id, labour_name)
                     );
                 """)
+                # Fix savedlabour created_at if table existed before
+                cursor.execute("ALTER TABLE models_app_savedlabour ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
             print("✅ FAST INDEX OK - Point values handled by FloatField", flush=True)
     except Exception as e:
         print(f"Index skip (safe): {e}", flush=True)
@@ -169,22 +195,37 @@ def generate_single_excel(report):
         thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         hdr_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
         hdr_font = Font(bold=True, color="FFFFFF", size=11)
-        ws.merge_cells('A1:D1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
-        ws.merge_cells('A2:D2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name}"; ws['A2'].alignment = Alignment(horizontal='center')
-        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-        for col in range(1,5):
-            cell = ws.cell(row=4, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", get_q(report,'qty_63mm'), "6MTR"), ("90MM PVC", get_q(report,'qty_90mm'), "6MTR"), ("110MM PVC", get_q(report,'qty_110mm'), "6MTR"), ("150MM DI", get_q(report,'qty_150mm'), "5.5MTR")], start=1):
-            ws.append([idx, dia, qty, unit])
-            r = ws.max_row
-            for c in range(1,5): ws.cell(row=r, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=r, column=c).border = thin
-        ws.append([]); pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm'); di = get_q(report,'qty_150mm')
-        ws.append(["", "Total PVC", f"{pvc} Qty", ""]); ws.append(["", "Total DI", f"{di} Qty", ""]); ws.append(["", "Grand Total", f"{report.total_qty} Qty", ""])
+        ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
+        ws.merge_cells('A1:G1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
+        ws.merge_cells('A2:G2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name} | Labour: {get_q(report,'labour_name','')}"; ws['A2'].alignment = Alignment(horizontal='center')
+        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Pipe MTR", "Extra MTR", "Total MTR"])
+        r = ws.max_row
+        for col in range(1,8): cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
+        for idx, (dia, qty, unit, pipe_mtr, extra) in enumerate([
+            ("63MM PVC", get_q(report,'qty_63mm'), "6MTR", get_q(report,'qty_63mm')*6, ex63),
+            ("90MM PVC", get_q(report,'qty_90mm'), "6MTR", get_q(report,'qty_90mm')*6, ex90),
+            ("110MM PVC", get_q(report,'qty_110mm'), "6MTR", get_q(report,'qty_110mm')*6, ex110),
+            ("150MM DI", get_q(report,'qty_150mm'), "5.5MTR", get_q(report,'qty_150mm')*5.5, ex150)
+        ], start=1):
+            total = pipe_mtr + extra
+            ws.append([idx, dia, qty, unit, f"{pipe_mtr} MTR", f"{extra} MTR", f"{total} MTR"])
+            rr = ws.max_row
+            for c in range(1,8): ws.cell(row=rr, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=c).border = thin
+        ws.append([])
+        pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
+        pvc_mtr = get_q(report,'qty_63mm')*6 + get_q(report,'qty_90mm')*6 + get_q(report,'qty_110mm')*6
+        pvc_extra = ex63+ex90+ex110
+        di = get_q(report,'qty_150mm'); di_mtr = di*5.5
+        ws.append(["", "Total PVC", f"{pvc} Qty", "", f"{pvc_mtr} MTR", f"{pvc_extra} MTR", f"{pvc_mtr+pvc_extra} MTR"])
+        ws.append(["", "Total DI", f"{di} Qty", "", f"{di_mtr} MTR", f"{ex150} MTR", f"{di_mtr+ex150} MTR"])
+        grand = get_q(report,'total_mtr', pvc_mtr+pvc_extra+di_mtr+ex150)
+        ws.append(["", "GRAND TOTAL MTR", "", "", "", "", f"{grand} MTR"])
         for rr in [ws.max_row-2, ws.max_row-1, ws.max_row]:
-            for c in range(1,5): ws.cell(row=rr, column=c).font = Font(bold=True); ws.cell(row=rr, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=c).border = thin
-        ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 18; ws.column_dimensions['C'].width = 18; ws.column_dimensions['D'].width = 15
+            for c in range(1,8): ws.cell(row=rr, column=c).font = Font(bold=True); ws.cell(row=rr, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=c).border = thin
+        ws.column_dimensions['A'].width = 10; ws.column_dimensions['B'].width = 15; ws.column_dimensions['C'].width = 12; ws.column_dimensions['D'].width = 10; ws.column_dimensions['E'].width = 14; ws.column_dimensions['F'].width = 14; ws.column_dimensions['G'].width = 14
         out = io.BytesIO(); wb.save(out); return out.getvalue()
-    except Exception:
+    except Exception as e:
+        print(f"Excel error: {e}")
         return generate_single_csv(report)
 
 def generate_single_pdf(report):
@@ -193,7 +234,6 @@ def generate_single_pdf(report):
         from reportlab.pdfgen import canvas
         from reportlab.lib import colors
         output = io.BytesIO(); c = canvas.Canvas(output, pagesize=A4); width, height = A4
-        # Title - BLACK color as per request
         c.setFillColor(colors.black)
         c.setFont("Helvetica-Bold", 16)
         c.drawCentredString(width/2, height-40, report.report_title)
@@ -202,60 +242,78 @@ def generate_single_pdf(report):
         c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'} | Labour: {get_q(report,'labour_name','') or 'No Labour'}")
         c.drawCentredString(width/2, height-75, f"Date: {report.report_date.strftime('%d-%m-%Y')}")
         y = height - 110
-        # PVC PIPES - Center - RED COLOR + Space
-        y -= 10  # Space above
-        c.setFillColor(colors.HexColor("#DC2626"))  # RED
+        # Extra values
+        ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
+        total_mtr_field = get_q(report,'total_mtr',0)
+        # PVC PIPES
+        y -= 10
+        c.setFillColor(colors.HexColor("#DC2626"))
         c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(width/2, y, "PVC PIPES")
-        y -= 25  # Space below
-        # Header - FIX: UNIT per Pipe in heading, not in values + fix overlap
-        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 9)
-        c.drawString(60, y+2, "Sr.No"); c.drawString(110, y+2, "Pipe Dia"); c.drawString(210, y+2, "Quantity"); c.drawString(280, y+2, "UNIT per Pipe"); c.drawString(400, y+2, "Total MTR")
-        y -= 30; c.setFont("Helvetica", 11)
-        pvc_total = 0
-        pvc_mtr_total = 0
-        for idx, (dia, qty, unit, mtr) in enumerate([
-            ("63MM PVC", get_q(report,'qty_63mm'), "6MTR", get_q(report,'qty_63mm')*6),
-            ("90MM PVC", get_q(report,'qty_90mm'), "6MTR", get_q(report,'qty_90mm')*6),
-            ("110MM PVC", get_q(report,'qty_110mm'), "6MTR", get_q(report,'qty_110mm')*6)
-        ], start=1):
-            if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+        y -= 25
+        c.setFillColor(colors.HexColor("#059669")); c.rect(30, y-5, 540, 25, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 7)
+        c.drawString(35, y+2, "Sr.No"); c.drawString(70, y+2, "Pipe Dia"); c.drawString(135, y+2, "Qty"); c.drawString(175, y+2, "UNIT"); c.drawString(220, y+2, "Pipe MTR"); c.drawString(290, y+2, "Extra MTR"); c.drawString(360, y+2, "Total MTR")
+        y -= 30; c.setFont("Helvetica", 10)
+        pvc_total = 0; pvc_mtr_total = 0; pvc_extra_total = 0
+        data = [
+            ("63MM PVC", get_q(report,'qty_63mm'), "6MTR", get_q(report,'qty_63mm')*6, ex63),
+            ("90MM PVC", get_q(report,'qty_90mm'), "6MTR", get_q(report,'qty_90mm')*6, ex90),
+            ("110MM PVC", get_q(report,'qty_110mm'), "6MTR", get_q(report,'qty_110mm')*6, ex110),
+        ]
+        for idx, (dia, qty, unit, mtr, extra) in enumerate(data, start=1):
+            if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
             c.setFillColor(colors.black)
-            c.drawString(60, y, str(idx)); c.drawString(110, y, dia); c.drawString(210, y, str(qty)); c.drawString(280, y, unit); c.drawString(400, y, f"{mtr} MTR")
+            total = mtr + extra
+            c.drawString(40, y, str(idx)); c.drawString(70, y, dia); c.drawString(135, y, str(qty)); c.drawString(175, y, unit); 
+            c.drawString(220, y, f"{mtr} MTR"); c.drawString(290, y, f"{extra} MTR"); c.drawString(360, y, f"{total} MTR")
+            # Highlight extra in red if present
+            if extra>0:
+                c.setFillColor(colors.HexColor("#DC2626")); c.setFont("Helvetica-Bold", 8)
+                c.drawString(430, y, f"+{extra} Extra")
+                c.setFont("Helvetica", 10)
             y -= 22
-            pvc_total += qty
-            pvc_mtr_total += mtr
+            pvc_total += qty; pvc_mtr_total += mtr; pvc_extra_total += extra
         y -= 5
-        c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11)
-        c.drawString(70, y+2, f"PVC Total: {pvc_total} Qty | {pvc_mtr_total} MTR")
+        c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 10)
+        c.drawString(35, y+2, f"PVC Total: {pvc_total} Qty | Pipe:{pvc_mtr_total} + Extra:{pvc_extra_total} = {pvc_mtr_total+pvc_extra_total} MTR")
         y -= 30
-        # DI PIPES - Center - RED COLOR + Space
-        y -= 15  # Space above
-        c.setFillColor(colors.HexColor("#DC2626"))  # RED
+        # DI PIPES
+        y -= 15
+        c.setFillColor(colors.HexColor("#DC2626"))
         c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(width/2, y, "DI PIPES")
-        y -= 25  # Space below
-        # DI Header - FIX: UNIT per Pipe
-        c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 9)
-        c.drawString(60, y+2, "Sr.No"); c.drawString(110, y+2, "Pipe Dia"); c.drawString(210, y+2, "Quantity"); c.drawString(280, y+2, "UNIT per Pipe"); c.drawString(400, y+2, "Total MTR")
-        y -= 30; c.setFont("Helvetica", 11)
+        y -= 25
+        c.setFillColor(colors.HexColor("#059669")); c.rect(30, y-5, 540, 25, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 7)
+        c.drawString(35, y+2, "Sr.No"); c.drawString(70, y+2, "Pipe Dia"); c.drawString(135, y+2, "Qty"); c.drawString(175, y+2, "UNIT"); c.drawString(220, y+2, "Pipe MTR"); c.drawString(290, y+2, "Extra MTR"); c.drawString(360, y+2, "Total MTR")
+        y -= 30; c.setFont("Helvetica", 10)
         di_qty = get_q(report,'qty_150mm')
         di_mtr = di_qty * 5.5
-        c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
+        di_total = di_mtr + ex150
+        c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
         c.setFillColor(colors.black)
-        c.drawString(70, y, "1"); c.drawString(140, y, "150MM DI"); c.drawString(260, y, str(di_qty)); c.drawString(350, y, "5.5MTR"); c.drawString(430, y, f"{di_mtr} MTR")
+        c.drawString(40, y, "1"); c.drawString(70, y, "150MM DI"); c.drawString(135, y, str(di_qty)); c.drawString(175, y, "5.5MTR"); 
+        c.drawString(220, y, f"{di_mtr} MTR"); c.drawString(290, y, f"{ex150} MTR"); c.drawString(360, y, f"{di_total} MTR")
+        if ex150>0:
+            c.setFillColor(colors.HexColor("#DC2626")); c.setFont("Helvetica-Bold", 8)
+            c.drawString(430, y, f"+{ex150} Extra")
         y -= 22
         y -= 5
-        c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11)
-        c.drawString(70, y+2, f"DI Total: {di_qty} Qty | {di_mtr} MTR")
-        # No Grand Total as per request
+        c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
+        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 10)
+        c.drawString(35, y+2, f"DI Total: {di_qty} Qty | Pipe:{di_mtr} + Extra:{ex150} = {di_total} MTR")
+        y -= 25
+        # Grand total MTR
+        grand_mtr = total_mtr_field if total_mtr_field>0 else (pvc_mtr_total+pvc_extra_total+di_total)
+        c.setFillColor(colors.HexColor("#1F2937")); c.rect(30, y-5, 540, 25, fill=1, stroke=0)
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(width/2, y+2, f"GRAND TOTAL MTR: {grand_mtr} MTR")
         c.showPage(); c.save(); return output.getvalue()
     except Exception as e:
         print(f"PDF error: {e}")
+        import traceback; traceback.print_exc()
         return generate_single_csv(report)
 
 def generate_month_csv(title, period_text, t63, t90, t110, t150=0):
@@ -1201,17 +1259,46 @@ def main_spa_page():
                                 with ui.row().classes("w-full items-center gap-2"):
                                     ui.icon("engineering", color="blue"); ui.label(f"Labour: {get_q(report,'labour_name','') or 'No Labour'}").classes("font-bold text-sm text-blue-900")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0 mb-4"):
+                            # Header
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x border-white/30"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r border-white/30"); ui.label("150MM DI").classes("py-2 text-[10px]")
+                            # Quantity Row
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
                                 ui.label(f"{get_q(report,'qty_63mm')}").classes("py-2 font-extrabold text-xs"); ui.label(f"{get_q(report,'qty_90mm')}").classes("py-2 font-extrabold text-xs border-x border-gray-200"); ui.label(f"{get_q(report,'qty_110mm')}").classes("py-2 font-extrabold text-xs border-r border-gray-200"); ui.label(f"{get_q(report,'qty_150mm')}").classes("py-2 font-extrabold text-xs bg-green-50 text-green-700")
+                            # Pipe MTR + Extra MTR Row - NEW
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y border-indigo-900 items-center"):
-                                ui.label(f"{int(get_q(report,'qty_63mm')*6)} MTR").classes("py-1.5 font-bold text-[10px]"); ui.label(f"{int(get_q(report,'qty_90mm')*6)} MTR").classes("py-1.5 font-bold text-[10px] border-x border-gray-200"); ui.label(f"{int(get_q(report,'qty_110mm')*6)} MTR").classes("py-1.5 font-bold text-[10px] border-r border-gray-200"); ui.label(f"{get_q(report,'qty_150mm')*5.5} MTR").classes("py-1.5 font-bold text-[10px] bg-green-50")
+                                ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
+                                m63 = get_q(report,'qty_63mm')*6 + ex63; m90 = get_q(report,'qty_90mm')*6 + ex90; m110 = get_q(report,'qty_110mm')*6 + ex110; m150 = get_q(report,'qty_150mm')*5.5 + ex150
+                                def fmt(m, ex):
+                                    if ex>0:
+                                        return f"{m} MTR (+{ex})"
+                                    return f"{m} MTR"
+                                ui.label(fmt(m63, ex63)).classes("py-1.5 font-bold text-[10px]"); ui.label(fmt(m90, ex90)).classes("py-1.5 font-bold text-[10px] border-x border-gray-200"); ui.label(fmt(m110, ex110)).classes("py-1.5 font-bold text-[10px] border-r border-gray-200"); ui.label(fmt(m150, ex150)).classes("py-1.5 font-bold text-[10px] bg-green-50")
+                            # Extra MTR Row Highlight
+                            with ui.grid(columns=4).classes("w-full bg-orange-50 text-center border-b border-indigo-900 items-center"):
+                                ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
+                                has_extra = ex63+ex90+ex110+ex150 > 0
+                                if has_extra:
+                                    ui.label(f"+{ex63} Extra" if ex63>0 else "-").classes("py-1 font-bold text-[9px] text-orange-600")
+                                    ui.label(f"+{ex90} Extra" if ex90>0 else "-").classes("py-1 font-bold text-[9px] text-orange-600 border-x border-gray-200")
+                                    ui.label(f"+{ex110} Extra" if ex110>0 else "-").classes("py-1 font-bold text-[9px] text-orange-600 border-r border-gray-200")
+                                    ui.label(f"+{ex150} Extra" if ex150>0 else "-").classes("py-1 font-bold text-[9px] text-orange-600")
+                                else:
+                                    ui.label("No Extra").classes("py-1 font-bold text-[9px] text-slate-400 col-span-4")
                             with ui.grid(columns=2).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white text-center items-center"):
                                 pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
                                 di = get_q(report,'qty_150mm')
-                                ui.label(f"Total PVC Pipes: {pvc} Qty").classes("py-2 font-bold text-green-300 text-[10px] border-r border-white/10")
-                                ui.label(f"Total DI Pipes: {di} Qty").classes("py-2 font-bold text-cyan-300 text-[10px]")
+                                ex_total = get_q(report,'extra_63mm',0)+get_q(report,'extra_90mm',0)+get_q(report,'extra_110mm',0)+get_q(report,'extra_150mm',0)
+                                total_mtr_val = get_q(report,'total_mtr',0)
+                                if total_mtr_val==0:
+                                    total_mtr_val = (get_q(report,'qty_63mm')*6+get_q(report,'qty_90mm')*6+get_q(report,'qty_110mm')*6+get_q(report,'qty_150mm')*5.5)+ex_total
+                                ui.label(f"PVC: {pvc} Qty | DI: {di} Qty").classes("py-2 font-bold text-green-300 text-[10px] border-r border-white/10")
+                                ui.label(f"Total MTR: {total_mtr_val}").classes("py-2 font-bold text-yellow-200 text-[10px]")
+                            # Grand Total MTR Banner
+                            with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
+                                ex_total = get_q(report,'extra_63mm',0)+get_q(report,'extra_90mm',0)+get_q(report,'extra_110mm',0)+get_q(report,'extra_150mm',0)
+                                if ex_total>0:
+                                    ui.label(f"Extra MTR Added: {ex_total} MTR").classes("py-1.5 font-extrabold text-orange-200 text-[11px]")
                             # Grand Total REMOVED - Only PVC and DI separate as per user request
                             # with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-emerald-900 to-teal-900 text-center"):
                             #     gt = pvc + di
