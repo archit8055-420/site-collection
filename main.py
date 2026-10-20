@@ -594,10 +594,10 @@ def main_spa_page():
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[10px]")
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
-                                with ui.column().classes("p-1.5 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
-                                with ui.column().classes("p-1.5 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
-                                with ui.column().classes("p-1.5 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
-                                with ui.column().classes("p-1.5 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1.5 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
                                 ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px]")
                                 ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px] border-x-2 border-indigo-900")
@@ -621,15 +621,10 @@ def main_spa_page():
                                 if val in (None, ""):
                                     return 0
                                 s = str(val).strip()
-                                # Reject negative
+                                # Reject negative only, allow decimal like 3.2, 9.9
                                 if s.startswith("-"):
                                     return 0
-                                # Reject decimal like 3.2, 9.9
-                                if "." in s:
-                                    if s.replace(".","",1).replace("-","",1).isdigit():
-                                        return int(float(s)) if float(s).is_integer() else 0
-                                    return 0
-                                v = int(float(s))
+                                v = float(s)
                                 if v < 0:
                                     return 0
                                 return v
@@ -648,15 +643,11 @@ def main_spa_page():
                             except:
                                 return False
                         def update_live_preview():
-                            # Integer only + No negative check
+                            # Allow decimal like 3.2, 9.9 + No negative check
                             for c in [c63, c90, c110, c150]:
                                 if c.value and c.value not in (None, ""):
                                     s = str(c.value).strip()
-                                    if "." in s:
-                                        ui.notify("Only integer allowed! 3.2 not allowed, use 3", type="warning", position="top")
-                                        c.value = s.split(".")[0]
-                                        c.update()
-                                    if s.startswith("-") or (s.lstrip("-").isdigit() and int(s) < 0):
+                                    if s.startswith("-"):
                                         ui.notify("Negative not allowed! -5 not allowed", type="warning", position="top")
                                         c.value = "0"
                                         c.update()
