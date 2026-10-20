@@ -616,66 +616,92 @@ def main_spa_page():
                         ui.icon("lock_reset", size="2.5rem")
                         ui.label("Direct Reset - No Email!").classes("text-xl font-extrabold")
                         ui.label("ID nakho, tyaj password badli jase").classes("text-xs opacity-90")
-                    with ui.column().classes("w-full p-5 bg-white gap-3") as forgot_col:
+                    with ui.column().classes("w-full p-5 bg-white gap-3"):
                         forgot_email = ui.input("Email ID / User ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
-                        forgot_status = ui.label("").classes("text-xs font-bold text-center w-full")
+                        forgot_status = ui.label("").classes("text-sm font-bold text-center w-full py-1")
                         
-                        # Hidden reset fields - show after ID verified
-                        reset_container = ui.column().classes("w-full gap-3 hidden")
-                        with reset_container:
-                            ui.separator()
-                            ui.label("✅ ID Verified! New password nakho:").classes("text-sm font-bold text-green-700")
-                            new_pwd = ui.input("New Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full")
-                            re_new_pwd = ui.input("Retype Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full")
-                            reset_status = ui.label("").classes("text-xs font-bold text-center w-full")
-                            
-                            async def do_direct_reset():
-                                p1 = (new_pwd.value or "").strip()
-                                p2 = (re_new_pwd.value or "").strip()
-                                email = (forgot_email.value or "").strip()
-                                if not is_valid_6digit(p1):
-                                    reset_status.set_text("❌ Password must be exactly 6 digits!")
-                                    ui.notify("Password must be exactly 6 digits! e.g., 123456", type="negative", position="top")
-                                    return
-                                if p1 != p2:
-                                    reset_status.set_text("❌ Passwords not same!")
-                                    return
-                                reset_status.set_text("⏳ Changing password...")
-                                try:
-                                    def update_pwd():
+                        # Container for new password fields - initially empty, will be filled after ID verified
+                        reset_area = ui.column().classes("w-full gap-3 mt-1")
+                        
+                        async def do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, verified_email):
+                            p1 = (new_pwd_input.value or "").strip()
+                            p2 = (re_new_pwd_input.value or "").strip()
+                            email = verified_email
+                            if not is_valid_6digit(p1):
+                                reset_status_label.set_text("❌ Password must be exactly 6 digits! Ex: 123456")
+                                ui.notify("Password must be exactly 6 digits!", type="negative", position="top")
+                                return
+                            if p1 != p2:
+                                reset_status_label.set_text("❌ Both passwords not same!")
+                                return
+                            reset_status_label.set_text("⏳ Changing password...")
+                            try:
+                                def update_pwd():
+                                    try:
+                                        u = AppUser.objects.get(email=email)
+                                    except AppUser.DoesNotExist:
                                         try:
-                                            u = AppUser.objects.get(email=email)
+                                            u = AppUser.objects.get(username=email)
                                         except AppUser.DoesNotExist:
-                                            try:
-                                                u = AppUser.objects.get(username=email)
-                                            except AppUser.DoesNotExist:
-                                                return None
-                                        u.password = make_password(p1)
-                                        u.save(update_fields=['password'])
-                                        return u
-                                    user = await run.io_bound(update_pwd)
-                                    if not user:
-                                        reset_status.set_text("❌ User not found!")
-                                        return
-                                    # Clear cache for this user
-                                    CACHE["users"].pop(email, None)
-                                    CACHE["users"][user.email] = user
-                                    # Remove old pwd cache entries for this email
-                                    keys_to_del = [k for k in CACHE["pwd_verified"] if email in k]
-                                    for k in keys_to_del:
-                                        CACHE["pwd_verified"].pop(k, None)
-                                    pwd_key = hashlib.sha256(f"{user.email}:{p1}".encode()).hexdigest()
-                                    CACHE["pwd_verified"][pwd_key] = user.id
-                                    app.storage.user["saved_email"] = user.email
-                                    app.storage.user["saved_password"] = p1
-                                    reset_status.set_text("✅ Password changed! Redirecting to login...")
-                                    ui.notify("✅ Password changed! Login now", type="positive", position="top")
-                                    await asyncio.sleep(1.5)
-                                    show_login()
-                                except Exception as e:
-                                    reset_status.set_text(f"❌ Error: {e}")
-                            
-                            ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=do_direct_reset).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg")
+                                            return None
+                                    u.password = make_password(p1)
+                                    u.save(update_fields=['password'])
+                                    return u
+                                user = await run.io_bound(update_pwd)
+                                if not user:
+                                    reset_status_label.set_text("❌ User not found!")
+                                    return
+                                CACHE["users"].pop(email, None)
+                                CACHE["users"][user.email] = user
+                                keys_to_del = [k for k in list(CACHE["pwd_verified"].keys()) if email in k]
+                                for k in keys_to_del:
+                                    CACHE["pwd_verified"].pop(k, None)
+                                pwd_key = hashlib.sha256(f"{user.email}:{p1}".encode()).hexdigest()
+                                CACHE["pwd_verified"][pwd_key] = user.id
+                                app.storage.user["saved_email"] = user.email
+                                app.storage.user["saved_password"] = p1
+                                reset_status_label.set_text("✅ Password changed! Going to login...")
+                                ui.notify("✅ Password changed! Login now", type="positive", position="top")
+                                await asyncio.sleep(1.2)
+                                show_login()
+                            except Exception as e:
+                                reset_status_label.set_text(f"❌ Error: {e}")
+
+                        async def verify_id():
+                            email = (forgot_email.value or "").strip()
+                            if not email:
+                                forgot_status.set_text("❌ Enter Email ID / User ID!")
+                                return
+                            forgot_status.set_text("⏳ Checking ID...")
+                            try:
+                                def get_user():
+                                    try:
+                                        return AppUser.objects.get(email=email)
+                                    except AppUser.DoesNotExist:
+                                        try:
+                                            return AppUser.objects.get(username=email)
+                                        except AppUser.DoesNotExist:
+                                            return None
+                                user = await run.io_bound(get_user)
+                                if not user:
+                                    forgot_status.set_text("❌ ID not registered! Check Email/Username")
+                                    reset_area.clear()
+                                    return
+                                forgot_status.set_text(f"✅ Found: {user.username} ({user.email})")
+                                # Now show new password fields - CLEAR and REBUILD
+                                reset_area.clear()
+                                with reset_area:
+                                    ui.separator().classes("my-2")
+                                    ui.label("✅ ID Verified! New password nakho:").classes("text-[13px] font-extrabold text-green-700 bg-green-50 px-3 py-1.5 rounded-full text-center w-full")
+                                    new_pwd_input = ui.input("New Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full font-bold")
+                                    re_new_pwd_input = ui.input("Retype Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full font-bold")
+                                    reset_status_label = ui.label("").classes("text-xs font-bold text-center w-full")
+                                    ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=lambda: do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, email)).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg mt-1")
+                            except Exception as e:
+                                forgot_status.set_text(f"❌ Error: {e}")
+                        
+                        ui.button("Verify ID & Reset Direct", icon="verified_user", on_click=verify_id).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg mt-2")
+                        ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
                         
                         async def verify_id():
                             email = (forgot_email.value or "").strip()
