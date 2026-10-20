@@ -1,4 +1,4 @@
-import os, datetime, csv, io, secrets, hashlib, traceback, requests
+import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
 print("🚀 FINAL 4-PIPE SIMPLE Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 from nicegui import ui, app, run
@@ -595,7 +595,7 @@ def main_spa_page():
                                     app.storage.user["saved_password"] = p1
                                     reset_status.set_text("✅ Password changed! Redirecting to login...")
                                     ui.notify("✅ Password changed! Login now", type="positive", position="top")
-                                    await run.sleep(1.5)
+                                    await asyncio.sleep(1.5)
                                     show_login()
                                 except Exception as e:
                                     reset_status.set_text(f"❌ Error: {e}")
