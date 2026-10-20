@@ -1,5 +1,5 @@
 import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
-print("🚀 FINAL 4-PIPE SIMPLE Loading...", flush=True)
+print("🚀 FINAL VERAVAL TRACKER Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 from nicegui import ui, app, run
 CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
@@ -150,7 +150,7 @@ def is_valid_6digit(pwd):
 
 @app.get("/health")
 def health_check():
-    return {"status":"ok","mode":"4-PIPE SIMPLE - 63,90,110,150"}
+    return {"status":"ok","mode":"VERAVAL TRACKER - 63,90,110,150"}
 
 def get_q(report, field, default=0):
     try:
@@ -426,7 +426,7 @@ def build_reset_content(token: str):
 
 @ui.page("/")
 def main_spa_page():
-    print("🚀 FINAL 4-PIPE SIMPLE - 63,90,110,150", flush=True)
+    print("🚀 FINAL VERAVAL TRACKER - 63,90,110,150", flush=True)
     state = {"user": None, "selected_report": None}
     with ui.column().classes("w-full min-h-screen p-0 m-0 gap-0") as root:
         login_view = ui.column().classes("w-full min-h-screen items-center justify-center bg-gradient-to-br from-indigo-900 via-purple-900 to-slate-900 p-3")
@@ -434,8 +434,8 @@ def main_spa_page():
             with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0 border-2 border-green-400/50"):
                 with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-green-600 to-teal-600 p-4 items-center text-white"):
                     ui.icon("bolt", size="2.5rem")
-                    ui.label("6-DIGIT SECURE LOGIN").classes("text-xl font-extrabold")
-                    ui.label("4-PIPE PVC+DI").classes("text-xs")
+                    ui.label("VERAVAL SITE TRACKER").classes("text-xl font-extrabold")
+                    ui.label("PipeLine Progress").classes("text-xs")
                 with ui.column().classes("w-full p-5 bg-white gap-3"):
                     saved_email = app.storage.user.get("saved_email", "")
                     saved_pwd = app.storage.user.get("saved_password", "")
@@ -672,7 +672,7 @@ def main_spa_page():
                                     user.save(update_fields=['default_report_title'])
                                     CACHE["users"][user.email] = user
                                     state["user"] = user
-                                    ui.notify(f"Title saved: {new_title}", type="positive", position="top")
+                                    ui.notify(f"✅ Title Saved", type="positive", position="top", timeout=2000)
                                 except Exception as ex:
                                     print(f"Title save fail: {ex}")
                             # FIXED: Only save on blur or Enter, not on every keystroke - no page reload
@@ -681,7 +681,7 @@ def main_spa_page():
                         def get_areas():
                             if user.id in CACHE["areas"]:
                                 return CACHE["areas"][user.id]
-                            areas = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True)[:100])
+                            areas = list(SavedArea.objects.filter(user=user).order_by("-id").values_list("area_name", flat=True)[:100])
                             CACHE["areas"][user.id] = areas
                             return areas
                         def get_labours():
@@ -691,7 +691,7 @@ def main_spa_page():
                                 return CACHE["labours"][user.id]
                             if HAS_LABOUR_MODEL:
                                 try:
-                                    labours = list(SavedLabour.objects.filter(user=user).values_list("labour_name", flat=True)[:100])
+                                    labours = list(SavedLabour.objects.filter(user=user).order_by("-id").values_list("labour_name", flat=True)[:100])
                                 except:
                                     labours = []
                             else:
@@ -712,7 +712,7 @@ def main_spa_page():
                                         current_saved = get_areas()
                                         suggestions_row.clear()
                                         with suggestions_row:
-                                            for area in current_saved[:12]:
+                                            for area in current_saved[:3]:
                                                 def make_click(a=area):
                                                     def click():
                                                         area_input.value = a
@@ -730,7 +730,7 @@ def main_spa_page():
                                         current_saved = get_labours()
                                         labour_suggestions_row.clear()
                                         with labour_suggestions_row:
-                                            for lab in current_saved[:12]:
+                                            for lab in current_saved[:3]:
                                                 def make_click(a=lab):
                                                     def click():
                                                         labour_input.value = a
@@ -740,7 +740,7 @@ def main_spa_page():
                                     refresh_labour_suggestions()
                                 # NO on_value_change live filtering for labour
                         with ui.row().classes("w-full justify-center items-center gap-1.5 mb-1.5"):
-                            ui.icon("bolt", color="green", size="1.3rem"); ui.label("4-PIPE PVC+DI").classes("text-base font-extrabold text-slate-800")
+                            ui.icon("bolt", color="green", size="1.3rem"); ui.label("PipeLine Progress").classes("text-base font-extrabold text-slate-800")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[10px]")
@@ -857,7 +857,7 @@ def main_spa_page():
                                     DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
                             c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; area_input.value = ""; labour_input.value = ""; update_live_preview()
                             get_areas(); get_labours(); refresh_suggestions(); refresh_labour_suggestions()
-                            ui.notify(f"Saved! Area:{area_val} Labour:{labour_val} PVC:{q63+q90+q110} DI:{q150}", type="positive", position="top")
+                            ui.notify(f"✅ Data Saved! Area:{area_val}", type="positive", position="top", timeout=2000)
                         ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
 
         def build_filter():
@@ -918,8 +918,8 @@ def main_spa_page():
                                                     ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[11px] font-bold text-slate-600")
                                                     ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
                                             with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
-                                                edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1")
-                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1")
+                                                edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1 bg-yellow-300 text-black font-bold border border-yellow-400")
+                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-500 text-white font-bold")
                                                 with ui.dialog() as edit_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"):
                                                     with ui.column().classes("w-full p-0 gap-0"):
                                                         with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-3 items-center justify-between text-white"):
@@ -979,7 +979,7 @@ def main_spa_page():
                                                                         rpt.total_qty = q63+q90+q110+q150
                                                                         rpt.price_sum = float(q63+q90+q110+q150)
                                                                         rpt.save()
-                                                                        ui.notify("Updated!", type="positive")
+                                                                        ui.notify("✅ Data Updated!", type="positive", position="top", timeout=2000)
                                                                         dlg.close()
                                                                         load_table_data()
                                                                     except Exception as ex:
@@ -1001,7 +1001,7 @@ def main_spa_page():
                                                                     def do_del():
                                                                         try:
                                                                             rpt.delete()
-                                                                            ui.notify("Deleted!", type="positive")
+                                                                            ui.notify("🗑️ Data Deleted!", type="positive", position="top", timeout=2000)
                                                                             dlg.close()
                                                                             load_table_data()
                                                                         except Exception as ex:
@@ -1248,4 +1248,4 @@ def main_spa_page():
 
 if __name__ in {"__main__", "__mp_main__"}:
     print(f"🚀 FINAL SIMPLE 4-PIPE Starting on 0.0.0.0:{PORT}", flush=True)
-    ui.run(host="0.0.0.0", port=PORT, title="4-PIPE SIMPLE", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
+    ui.run(host="0.0.0.0", port=PORT, title="VERAVAL TRACKER", storage_secret=STORAGE_SECRET, reload=False, show=False, dark=False)
