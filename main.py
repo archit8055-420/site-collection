@@ -513,15 +513,16 @@ def main_spa_page():
                                     with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
                     with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-3 sm:p-5 border-2 border-green-200"):
                         with ui.row().classes("w-full justify-center mb-2.5"):
-                            title_input = ui.input(value=user.default_report_title).props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
+                                                        title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
                             def save_title_persist(e):
                                 new_title = (e.value if hasattr(e, 'value') else title_input.value or "").strip()
-                                if not new_title or new_title == user.default_report_title:
+                                if not new_title:
+                                    new_title = "Veraval site"
+                                if new_title == user.default_report_title:
                                     return
-                                try:
-                                    user.default_report_title = new_title
-                                    user.save(update_fields=['default_report_title'])
-                                    CACHE["users"][user.email] = user
+                                user.default_report_title = new_title
+                                user.save(update_fields=['default_report_title'])
+                                CACHE["users"][user.email] = user
                                     state["user"] = user
                                 except Exception:
                                     pass
@@ -548,22 +549,19 @@ def main_spa_page():
                             return labours
                         saved_areas = get_areas()
                         saved_labours = get_labours()
-                        # Area + Labour Name side by side
+                        # Area + Labour Name side by side - FIXED: No live filtering while typing
                         with ui.row().classes("w-full mb-2.5 gap-2"):
                             with ui.column().classes("flex-1 gap-1"):
                                 ui.label("Enter Area *").classes("text-xs font-bold text-green-700 ml-1")
                                 area_input = ui.input(placeholder="Type area name...", value="").props("outlined rounded dense color=green").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
                                 with ui.row().classes("w-full gap-1 flex-wrap") as suggestions_row:
                                     def refresh_suggestions():
-                                        # Filter based on current input - show matching full names only, not K, Ka, Kam
-                                        cur = (area_input.value or "").strip().lower()
+                                        # FIXED: Show only saved full names, no live filtering on typing
+                                        # Suggestion only after save, not while typing S, Su, Sur...
+                                        current_saved = get_areas()
                                         suggestions_row.clear()
                                         with suggestions_row:
-                                            if cur:
-                                                filtered = [a for a in saved_areas if cur in a.lower()][:8]
-                                            else:
-                                                filtered = saved_areas[:8]
-                                            for area in filtered:
+                                            for area in current_saved[:12]:
                                                 def make_click(a=area):
                                                     def click():
                                                         area_input.value = a
@@ -571,26 +569,17 @@ def main_spa_page():
                                                     return click
                                                 ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2 py-0")
                                     refresh_suggestions()
-                                def on_area_save(e):
-                                    val = (e.value or "").strip() if hasattr(e, 'value') else (area_input.value or "").strip()
-                                    refresh_suggestions()
-                                    if val and val not in saved_areas:
-                                        SavedArea.objects.get_or_create(user=user, area_name=val)
-                                        CACHE["areas"].pop(user.id, None)
-                                area_input.on_value_change(on_area_save)
+                                # NO on_value_change live filtering - Only show after save
                             with ui.column().classes("flex-1 gap-1"):
                                 ui.label("Enter Labour Name").classes("text-xs font-bold text-blue-700 ml-1")
                                 labour_input = ui.input(placeholder="Type labour name...", value="").props("outlined rounded dense color=blue").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
                                 with ui.row().classes("w-full gap-1 flex-wrap") as labour_suggestions_row:
                                     def refresh_labour_suggestions():
-                                        cur = (labour_input.value or "").strip().lower()
+                                        # FIXED: Show only saved full names after save, no live filtering
+                                        current_saved = get_labours()
                                         labour_suggestions_row.clear()
                                         with labour_suggestions_row:
-                                            if cur:
-                                                filtered = [a for a in saved_labours if cur in a.lower()][:8]
-                                            else:
-                                                filtered = saved_labours[:8]
-                                            for lab in filtered:
+                                            for lab in current_saved[:12]:
                                                 def make_click(a=lab):
                                                     def click():
                                                         labour_input.value = a
@@ -598,18 +587,7 @@ def main_spa_page():
                                                     return click
                                                 ui.button(lab, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2 py-0")
                                     refresh_labour_suggestions()
-                                def on_labour_save(e):
-                                    val = (e.value or "").strip() if hasattr(e, 'value') else (labour_input.value or "").strip()
-                                    refresh_labour_suggestions()
-                                    if val and val not in saved_labours:
-                                        if HAS_LABOUR_MODEL:
-                                            try:
-                                                SavedLabour.objects.get_or_create(user=user, labour_name=val)
-                                            except:
-                                                pass
-                                        if "labours" in CACHE and user.id in CACHE["labours"]:
-                                            CACHE["labours"].pop(user.id, None)
-                                labour_input.on_value_change(on_labour_save)
+                                # NO on_value_change live filtering for labour
                         with ui.row().classes("w-full justify-center items-center gap-1.5 mb-1.5"):
                             ui.icon("bolt", color="green", size="1.3rem"); ui.label("4-PIPE PVC+DI").classes("text-base font-extrabold text-slate-800")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
@@ -720,7 +698,9 @@ def main_spa_page():
                                         pass
                                 if "labours" in CACHE and user.id in CACHE["labours"]:
                                     CACHE["labours"].pop(user.id, None)
-                            current_title = (title_input.value or "").strip() or user.default_report_title
+                            current_title = (title_input.value or "").strip()
+                            if not current_title:
+                                current_title = "Veraval site"
                             if current_title != user.default_report_title:
                                 user.default_report_title = current_title
                                 user.save(update_fields=['default_report_title'])
