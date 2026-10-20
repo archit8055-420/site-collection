@@ -532,16 +532,17 @@ def main_spa_page():
                                     with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
                     with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-3 sm:p-5 border-2 border-green-200"):
                         with ui.row().classes("w-full justify-center mb-2.5"):
-                                                        title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
+                            title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
                             def save_title_persist(e):
-                                new_title = (e.value if hasattr(e, 'value') else title_input.value or "").strip()
-                                if not new_title:
-                                    new_title = "Veraval site"
-                                if new_title == user.default_report_title:
-                                    return
-                                user.default_report_title = new_title
-                                user.save(update_fields=['default_report_title'])
-                                CACHE["users"][user.email] = user
+                                try:
+                                    new_title = (e.value if hasattr(e, 'value') else title_input.value or "").strip()
+                                    if not new_title:
+                                        new_title = "Veraval site"
+                                    if new_title == user.default_report_title:
+                                        return
+                                    user.default_report_title = new_title
+                                    user.save(update_fields=['default_report_title'])
+                                    CACHE["users"][user.email] = user
                                     state["user"] = user
                                 except Exception:
                                     pass
@@ -635,19 +636,10 @@ def main_spa_page():
                                     di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2 font-bold text-cyan-300 text-[11px]")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
                                     mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-2 font-bold text-yellow-200 text-[11px]")
-                                                def parse_qty(val):
+                        def parse_qty(val):
                             try:
                                 if val in (None, ""):
                                     return 0
-                                s = str(val).strip()
-                                if s.startswith("-"):
-                                    return 0
-                                v = float(s)
-                                if v < 0:
-                                    return 0
-                                return v
-                            except:
-                                return 0
                                 s = str(val).strip()
                                 # Reject negative only, allow decimal like 3.2, 9.9
                                 if s.startswith("-"):
