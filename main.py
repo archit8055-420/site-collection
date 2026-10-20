@@ -64,7 +64,7 @@ STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
 
 def send_gmail_smtp(to_email, username, reset_link):
     """FREE method - sends to ALL emails using Gmail - No domain needed!"""
-    import smtplib
+    import smtplib, socket
     from email.mime.text import MIMEText
     from email.mime.multipart import MIMEMultipart
     gmail_user = os.getenv("GMAIL_USER", "").strip() or os.getenv("EMAIL_FROM_GMAIL", "").strip()
@@ -83,47 +83,67 @@ def send_gmail_smtp(to_email, username, reset_link):
         <a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">Reset Password</a>
         <p style="font-size:12px; color:#666;">Link: {reset_link}</p></div>"""
         msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP("smtp.gmail.com", 587) as server:
+        # Timeout 15 sec - Render free sometimes blocks SMTP, so fail fast and show link
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
             server.starttls()
             server.login(gmail_user, gmail_pass)
             server.sendmail(gmail_user, to_email, msg.as_string())
+        print(f"✅ Gmail OK to {to_email}", flush=True)
         return True, f"Gmail sent to {to_email}"
+    except socket.timeout:
+        print(f"❌ Gmail timeout to {to_email} - Render may block SMTP, fallback to link", flush=True)
+        return False, f"Gmail timeout - but link is ready: {reset_link}"
     except Exception as e:
-        return False, f"Gmail failed: {e}"
+        print(f"❌ Gmail fail to {to_email}: {e}", flush=True)
+        return False, f"Gmail failed: {e} - Link: {reset_link}"
 
 def send_reset_email_resend_http(to_email, username, reset_link):
-    # First try Gmail (FREE - ALL emails) if configured
-    gmail_user = os.getenv("GMAIL_USER", "").strip()
-    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "").strip()
-    if gmail_user and gmail_pass:
-        success, msg = send_gmail_smtp(to_email, username, reset_link)
-        if success:
-            print(f"✅ Gmail sent to {to_email}", flush=True)
-            return True, msg
-        print(f"Gmail failed, trying Resend: {msg}", flush=True)
-    
-    # Fallback to Resend
+    """FREE METHOD - Priority: 1. Google Apps Script HTTP (works on Render FREE) 2. Resend HTTP 3. Gmail SMTP"""
+    import requests
     api_key = os.getenv("RESEND_API_KEY", "").strip()
     from_email = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
-    if not api_key:
-        return False, "RESEND_API_KEY nathi! Gmail pan set nathi"
-    try:
-        html = f"""<div style="font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px; border:2px solid #10B981;">
-        <h2>Hi {username}!</h2><p>Reset for: <b>{to_email}</b></p>
-        <a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">Reset Password</a>
-        <p style="font-size:12px;">Link 15 min: {reset_link}</p></div>"""
-        payload = {"from": from_email, "to": [to_email], "subject": f"Reset Password - {username}", "html": html}
-        r = requests.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=20)
-        print(f"Resend {r.status_code} FROM:{from_email} TO:{to_email} -> {r.text[:300]}", flush=True)
-        if r.status_code in (200,201):
-            return True, f"Sent ID: {r.json().get('id','')}"
-        else:
+    
+    # STEP 1: FREE Google Apps Script HTTP - Sends REAL mail to ANY email, no domain needed, no SMTP block!
+    script_url = os.getenv("GOOGLE_APPS_SCRIPT_URL", "").strip()
+    if script_url:
+        success, msg = send_free_google_apps_script(to_email, username, reset_link)
+        if success:
+            print(f"✅ FREE Apps Script sent REAL MAIL to {to_email}", flush=True)
+            return True, msg
+        print(f"Apps Script failed: {msg}, trying Resend...", flush=True)
+    
+    # STEP 2: Resend HTTP (works on Render, but onboarding only to owner)
+    if api_key:
+        try:
+            html = f"""<div style="font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px; border:2px solid #10B981;">
+            <h2>Hi {username}!</h2><p>Reset for: <b>{to_email}</b></p>
+            <a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">Reset Password</a>
+            <p style="font-size:12px;">Link 15 min: {reset_link}</p></div>"""
+            payload = {"from": from_email, "to": [to_email], "subject": f"Reset Password - {username}", "html": html}
+            r = requests.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=15)
+            print(f"Resend {r.status_code} FROM:{from_email} TO:{to_email} -> {r.text[:300]}", flush=True)
+            if r.status_code in (200,201):
+                return True, f"Resend sent to {to_email}"
             txt = r.text
             if "only send testing emails to your own" in txt:
-                return False, f"FREE_LIMIT::Onboarding only sends to owner ajbhai192837465@gmail.com. To send to ALL (ajbhai917325846@gmail.com etc) FREE: Use Gmail method (see steps) OR verify domain at resend.com/domains and set EMAIL_FROM=noreply@yourdomain.com"
-            return False, f"Failed {r.status_code}: {txt[:500]}"
-    except Exception as e:
-        return False, f"Failed: {e}"
+                # Try Gmail SMTP as last fallback
+                g_user = os.getenv("GMAIL_USER","").strip()
+                g_pass = os.getenv("GMAIL_APP_PASSWORD","").strip()
+                if g_user and g_pass:
+                    s,m = send_gmail_smtp(to_email, username, reset_link)
+                    if s: return True,m
+                return False, f"FREE_LIMIT::Onboarding only to owner. Use FREE Apps Script method for ALL emails! See GOOGLE_APPS_SCRIPT_URL"
+            return False, f"Resend failed {r.status_code}: {txt[:300]}"
+        except Exception as e:
+            print(f"Resend exception: {e}", flush=True)
+    
+    # STEP 3: Gmail SMTP fallback (may be blocked on Render FREE)
+    g_user = os.getenv("GMAIL_USER","").strip()
+    g_pass = os.getenv("GMAIL_APP_PASSWORD","").strip()
+    if g_user and g_pass:
+        return send_gmail_smtp(to_email, username, reset_link)
+    
+    return False, "No email method - Set GOOGLE_APPS_SCRIPT_URL (FREE) or RESEND_API_KEY"
 
 def is_valid_6digit(pwd):
     return pwd and len(pwd)==6 and pwd.isdigit()
@@ -517,71 +537,98 @@ def main_spa_page():
             forgot_view.clear()
             with forgot_view:
                 with ui.card().classes("w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden p-0"):
-                    with ui.column().classes("w-full bg-gradient-to-r from-blue-500 via-indigo-600 to-purple-600 p-5 items-center text-white"):
+                    with ui.column().classes("w-full bg-gradient-to-r from-emerald-500 via-teal-600 to-cyan-600 p-5 items-center text-white"):
                         ui.icon("lock_reset", size="2.5rem")
-                        ui.label("Forgot Password - FREE").classes("text-xl font-extrabold")
-                    with ui.column().classes("w-full p-5 bg-white gap-3"):
-                        forgot_email = ui.input("Email ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
+                        ui.label("Direct Reset - No Email!").classes("text-xl font-extrabold")
+                        ui.label("ID nakho, tyaj password badli jase").classes("text-xs opacity-90")
+                    with ui.column().classes("w-full p-5 bg-white gap-3") as forgot_col:
+                        forgot_email = ui.input("Email ID / User ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
                         forgot_status = ui.label("").classes("text-xs font-bold text-center w-full")
-                        async def send_reset_link():
+                        
+                        # Hidden reset fields - show after ID verified
+                        reset_container = ui.column().classes("w-full gap-3 hidden")
+                        with reset_container:
+                            ui.separator()
+                            ui.label("✅ ID Verified! New password nakho:").classes("text-sm font-bold text-green-700")
+                            new_pwd = ui.input("New Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full")
+                            re_new_pwd = ui.input("Retype Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full")
+                            reset_status = ui.label("").classes("text-xs font-bold text-center w-full")
+                            
+                            async def do_direct_reset():
+                                p1 = (new_pwd.value or "").strip()
+                                p2 = (re_new_pwd.value or "").strip()
+                                email = (forgot_email.value or "").strip()
+                                if not is_valid_6digit(p1):
+                                    reset_status.set_text("❌ Password must be exactly 6 digits!")
+                                    ui.notify("Password must be exactly 6 digits! e.g., 123456", type="negative", position="top")
+                                    return
+                                if p1 != p2:
+                                    reset_status.set_text("❌ Passwords not same!")
+                                    return
+                                reset_status.set_text("⏳ Changing password...")
+                                try:
+                                    def update_pwd():
+                                        try:
+                                            u = AppUser.objects.get(email=email)
+                                        except AppUser.DoesNotExist:
+                                            try:
+                                                u = AppUser.objects.get(username=email)
+                                            except AppUser.DoesNotExist:
+                                                return None
+                                        u.password = make_password(p1)
+                                        u.save(update_fields=['password'])
+                                        return u
+                                    user = await run.io_bound(update_pwd)
+                                    if not user:
+                                        reset_status.set_text("❌ User not found!")
+                                        return
+                                    # Clear cache for this user
+                                    CACHE["users"].pop(email, None)
+                                    CACHE["users"][user.email] = user
+                                    # Remove old pwd cache entries for this email
+                                    keys_to_del = [k for k in CACHE["pwd_verified"] if email in k]
+                                    for k in keys_to_del:
+                                        CACHE["pwd_verified"].pop(k, None)
+                                    pwd_key = hashlib.sha256(f"{user.email}:{p1}".encode()).hexdigest()
+                                    CACHE["pwd_verified"][pwd_key] = user.id
+                                    app.storage.user["saved_email"] = user.email
+                                    app.storage.user["saved_password"] = p1
+                                    reset_status.set_text("✅ Password changed! Redirecting to login...")
+                                    ui.notify("✅ Password changed! Login now", type="positive", position="top")
+                                    await run.sleep(1.5)
+                                    show_login()
+                                except Exception as e:
+                                    reset_status.set_text(f"❌ Error: {e}")
+                            
+                            ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=do_direct_reset).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg")
+                        
+                        async def verify_id():
                             email = (forgot_email.value or "").strip()
                             if not email:
-                                forgot_status.set_text("❌ Enter Email ID!")
+                                forgot_status.set_text("❌ Enter Email ID / User ID!")
                                 return
+                            forgot_status.set_text("⏳ Checking ID...")
                             try:
                                 def get_user():
                                     try:
                                         return AppUser.objects.get(email=email)
                                     except AppUser.DoesNotExist:
-                                        return None
+                                        try:
+                                            return AppUser.objects.get(username=email)
+                                        except AppUser.DoesNotExist:
+                                            return None
                                 user = await run.io_bound(get_user)
                                 if not user:
-                                    forgot_status.set_text("❌ Email not registered!")
+                                    forgot_status.set_text("❌ ID not registered! Check Email/Username")
+                                    reset_container.classes(add="hidden")
                                     return
+                                forgot_status.set_text(f"✅ Found: {user.username} ({user.email}) - Now set new password below")
+                                reset_container.classes(remove="hidden")
+                                # Scroll to reset
                             except Exception as e:
-                                forgot_status.set_text(f"❌ DB Error: {e}")
-                                return
-                            token = secrets.token_urlsafe(32)
-                            if HAS_TOKEN_MODEL:
-                                try:
-                                    def create_token():
-                                        PasswordResetToken.objects.filter(user=user).delete()
-                                        PasswordResetToken.objects.create(user=user, token=token)
-                                    await run.io_bound(create_token)
-                                except Exception as ex:
-                                    print(f"Token create fail: {ex}")
-                            base_url = os.getenv("RENDER_EXTERNAL_URL", os.getenv("BASE_URL", "https://site-collection.onrender.com"))
-                            if "localhost" in base_url or not base_url:
-                                base_url = "https://site-collection.onrender.com"
-                            reset_link = f"{base_url}/reset/{token}"
-                            forgot_status.set_text(f"⏳ Sending mail to {email}... (Gmail FREE)")
-                            try:
-                                # Run email in background thread - no blocking UI
-                                success, msg = await run.io_bound(lambda: send_reset_email_resend_http(email, user.username, reset_link))
-                            except Exception as e:
-                                success, msg = False, f"Exception: {e}"
-                            if success:
-                                forgot_status.set_text(f"✅ Mail sent to {email}! Check inbox & spam")
-                                ui.notify(f"✅ Mail sent to {email} via Gmail FREE", type="positive", position="top")
-                            else:
-                                if "FREE_LIMIT" in msg:
-                                    forgot_status.set_text(f"✅ Link ready (FREE): {reset_link}")
-                                    print(f"FREE LIMIT Link: {reset_link}", flush=True)
-                                    try:
-                                        with ui.dialog() as dlg, ui.card().classes("p-4 rounded-xl max-w-md"):
-                                            ui.label("✅ Reset Link Ready!").classes("font-bold text-green-600")
-                                            ui.label(f"FREE method: Link for {email} (15 min valid)").classes("text-xs mt-2")
-                                            ui.label(reset_link).classes("text-xs break-all text-blue-600 mt-2 border p-2 rounded bg-blue-50")
-                                            ui.button("Open Reset Link", icon="open_in_new", on_click=lambda: ui.navigate.to(reset_link)).props("rounded").classes("bg-blue-600 text-white w-full mt-3")
-                                            ui.button("Copy Link", on_click=lambda: ui.clipboard.write(reset_link)).props("outline rounded").classes("w-full mt-1")
-                                            ui.button("Close", on_click=dlg.close).props("flat").classes("w-full")
-                                        dlg.open()
-                                    except Exception as ex:
-                                        print(f"Dialog fail: {ex}")
-                                else:
-                                    forgot_status.set_text(f"❌ {msg}")
-                                    print(f"Email fail: {msg}", flush=True)
-                        ui.button("Send Reset Link - FREE", icon="send", on_click=send_reset_link).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
+                                forgot_status.set_text(f"❌ Error: {e}")
+                        
+                        ui.button("Verify ID & Reset Direct", icon="verified_user", on_click=verify_id).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
                         ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
 
         def build_home():
