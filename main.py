@@ -635,10 +635,19 @@ def main_spa_page():
                                     di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2 font-bold text-cyan-300 text-[11px]")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
                                     mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-2 font-bold text-yellow-200 text-[11px]")
-                        def parse_qty(val):
+                                                def parse_qty(val):
                             try:
                                 if val in (None, ""):
                                     return 0
+                                s = str(val).strip()
+                                if s.startswith("-"):
+                                    return 0
+                                v = float(s)
+                                if v < 0:
+                                    return 0
+                                return v
+                            except:
+                                return 0
                                 s = str(val).strip()
                                 # Reject negative only, allow decimal like 3.2, 9.9
                                 if s.startswith("-"):
