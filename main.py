@@ -750,7 +750,9 @@ def main_spa_page():
                                 ui.label(f"Total PVC Pipes: {pvc} Qty").classes("py-2 font-bold text-green-300 text-[10px] border-r border-white/10")
                                 ui.label(f"Total DI Pipes: {di} Qty").classes("py-2 font-bold text-cyan-300 text-[10px]")
                             with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-emerald-900 to-teal-900 text-center"):
-                                ui.label(f"Grand Total: {report.total_qty} Quantity").classes("py-2.5 font-extrabold text-white text-sm")
+                                # FIX: Grand Total = PVC + DI (not old total_qty) - 63 logic same as 150
+                                gt = pvc + di
+                                ui.label(f"Grand Total: {gt} Quantity").classes("py-2.5 font-extrabold text-white text-sm")
                         with ui.column().classes("w-full bg-gray-50 rounded-xl p-3 border border-gray-200 mb-3"):
                             ui.label(f"📅 Date: {report.report_date.strftime('%d-%m-%Y')}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"📍 Area: {report.area_name}").classes("text-xs font-bold text-slate-700")
