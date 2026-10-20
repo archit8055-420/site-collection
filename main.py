@@ -61,6 +61,11 @@ def ensure_neon_fast():
                     "ALTER TABLE models_app_dailyreport ADD COLUMN qty_150mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_pvc REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_di REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN extra_63mm REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN extra_90mm REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN extra_110mm REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN extra_150mm REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN total_mtr REAL DEFAULT 0;",
                 ]:
                     try:
                         cursor.execute(sql)
@@ -128,21 +133,28 @@ def generate_single_csv(report):
     writer.writerow([report.report_title])
     writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}", f"Labour: {get_q(report, 'labour_name', '')}"])
     writer.writerow([])
+    # Extra MTR handling
+    ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
     writer.writerow(["PVC PIPES"])
-    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
-    writer.writerow([1, "63MM PVC", get_q(report,'qty_63mm'), "6MTR per PIPES", f"{get_q(report,'qty_63mm')*6} MTR"])
-    writer.writerow([2, "90MM PVC", get_q(report,'qty_90mm'), "6MTR per PIPES", f"{get_q(report,'qty_90mm')*6} MTR"])
-    writer.writerow([3, "110MM PVC", get_q(report,'qty_110mm'), "6MTR per PIPES", f"{get_q(report,'qty_110mm')*6} MTR"])
+    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Pipe MTR", "Extra MTR", "Total MTR"])
+    m63 = get_q(report,'qty_63mm')*6; m90 = get_q(report,'qty_90mm')*6; m110 = get_q(report,'qty_110mm')*6
+    writer.writerow([1, "63MM PVC", get_q(report,'qty_63mm'), "6MTR per PIPES", f"{m63} MTR", f"{ex63} MTR", f"{m63+ex63} MTR"])
+    writer.writerow([2, "90MM PVC", get_q(report,'qty_90mm'), "6MTR per PIPES", f"{m90} MTR", f"{ex90} MTR", f"{m90+ex90} MTR"])
+    writer.writerow([3, "110MM PVC", get_q(report,'qty_110mm'), "6MTR per PIPES", f"{m110} MTR", f"{ex110} MTR", f"{m110+ex110} MTR"])
     pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
-    pvc_mtr = (get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm'))*6
-    writer.writerow([f"PVC Total: {pvc} Qty | {pvc_mtr} MTR"])
+    pvc_mtr = m63+m90+m110
+    pvc_extra = ex63+ex90+ex110
+    writer.writerow([f"PVC Total: {pvc} Qty | Pipe MTR:{pvc_mtr} + Extra:{pvc_extra} = Total:{pvc_mtr+pvc_extra} MTR"])
     writer.writerow([])
     writer.writerow(["DI PIPES"])
-    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
-    writer.writerow([1, "150MM DI", get_q(report,'qty_150mm'), "5.5MTR", f"{get_q(report,'qty_150mm')*5.5} MTR"])
+    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Pipe MTR", "Extra MTR", "Total MTR"])
     di = get_q(report,'qty_150mm')
     di_mtr = di*5.5
-    writer.writerow([f"DI Total: {di} Qty | {di_mtr} MTR"])
+    writer.writerow([1, "150MM DI", di, "5.5MTR", f"{di_mtr} MTR", f"{ex150} MTR", f"{di_mtr+ex150} MTR"])
+    writer.writerow([f"DI Total: {di} Qty | Pipe MTR:{di_mtr} + Extra:{ex150} = Total:{di_mtr+ex150} MTR"])
+    writer.writerow([])
+    grand_mtr = get_q(report,'total_mtr', pvc_mtr+di_mtr+pvc_extra+ex150)
+    writer.writerow([f"GRAND TOTAL MTR: {grand_mtr} MTR (Pipe MTR + Extra MTR)"])
     return output.getvalue().encode("utf-8")
 
 def generate_single_excel(report):
@@ -153,22 +165,36 @@ def generate_single_excel(report):
         thin = Border(left=Side(style='thin'), right=Side(style='thin'), top=Side(style='thin'), bottom=Side(style='thin'))
         hdr_fill = PatternFill(start_color="10B981", end_color="10B981", fill_type="solid")
         hdr_font = Font(bold=True, color="FFFFFF", size=11)
-        ws.merge_cells('A1:D1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
-        ws.merge_cells('A2:D2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name}"; ws['A2'].alignment = Alignment(horizontal='center')
-        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-        for col in range(1,5):
+        extra_fill = PatternFill(start_color="F97316", end_color="F97316", fill_type="solid")  # Orange for extra
+        ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
+        ws.merge_cells('A1:G1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
+        ws.merge_cells('A2:G2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name} | Labour: {get_q(report,'labour_name','')}"; ws['A2'].alignment = Alignment(horizontal='center')
+        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Pipe MTR", "Extra MTR", "Total MTR"])
+        for col in range(1,8):
             cell = ws.cell(row=4, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", get_q(report,'qty_63mm'), "6MTR"), ("90MM PVC", get_q(report,'qty_90mm'), "6MTR"), ("110MM PVC", get_q(report,'qty_110mm'), "6MTR"), ("150MM DI", get_q(report,'qty_150mm'), "5.5MTR")], start=1):
-            ws.append([idx, dia, qty, unit])
+        # Data
+        m63 = get_q(report,'qty_63mm')*6; m90 = get_q(report,'qty_90mm')*6; m110 = get_q(report,'qty_110mm')*6; m150 = get_q(report,'qty_150mm')*5.5
+        rows = [
+            [1, "63MM PVC", get_q(report,'qty_63mm'), "6MTR", f"{m63}", f"{ex63}", f"{m63+ex63}"],
+            [2, "90MM PVC", get_q(report,'qty_90mm'), "6MTR", f"{m90}", f"{ex90}", f"{m90+ex90}"],
+            [3, "110MM PVC", get_q(report,'qty_110mm'), "6MTR", f"{m110}", f"{ex110}", f"{m110+ex110}"],
+            [4, "150MM DI", get_q(report,'qty_150mm'), "5.5MTR", f"{m150}", f"{ex150}", f"{m150+ex150}"],
+        ]
+        for r_data in rows:
+            ws.append(r_data)
             r = ws.max_row
-            for c in range(1,5): ws.cell(row=r, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=r, column=c).border = thin
+            for c in range(1,8): ws.cell(row=r, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=r, column=c).border = thin
         ws.append([]); pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm'); di = get_q(report,'qty_150mm')
-        ws.append(["", "Total PVC", f"{pvc} Qty", ""]); ws.append(["", "Total DI", f"{di} Qty", ""]); ws.append(["", "Grand Total", f"{report.total_qty} Qty", ""])
+        total_mtr = get_q(report,'total_mtr', m63+m90+m110+m150+ex63+ex90+ex110+ex150)
+        ws.append(["", "Total PVC", f"{pvc} Qty", "", f"{m63+m90+m110}", f"{ex63+ex90+ex110}", f"{m63+m90+m110+ex63+ex90+ex110}"])
+        ws.append(["", "Total DI", f"{di} Qty", "", f"{m150}", f"{ex150}", f"{m150+ex150}"])
+        ws.append(["", "Grand Total MTR", f"{total_mtr} MTR", "", "", "", ""])
         for rr in [ws.max_row-2, ws.max_row-1, ws.max_row]:
-            for c in range(1,5): ws.cell(row=rr, column=c).font = Font(bold=True); ws.cell(row=rr, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=c).border = thin
-        ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 18; ws.column_dimensions['C'].width = 18; ws.column_dimensions['D'].width = 15
+            for c in range(1,8): ws.cell(row=rr, column=c).font = Font(bold=True); ws.cell(row=rr, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=c).border = thin
+        ws.column_dimensions['A'].width = 10; ws.column_dimensions['B'].width = 16; ws.column_dimensions['C'].width = 14; ws.column_dimensions['D'].width = 12; ws.column_dimensions['E'].width = 12; ws.column_dimensions['F'].width = 12; ws.column_dimensions['G'].width = 14
         out = io.BytesIO(); wb.save(out); return out.getvalue()
-    except Exception:
+    except Exception as e:
+        print(f"Excel gen error: {e}")
         return generate_single_csv(report)
 
 def generate_single_pdf(report):
@@ -745,6 +771,9 @@ def main_spa_page():
                                 # NO on_value_change live filtering for labour
                         with ui.row().classes("w-full justify-center items-center gap-1 mb-1"):
                             ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
+                        # STATE for extra MTR per pipe - NEW FEATURE
+                        extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
+                        
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("63MM PVC").classes("py-1.5 text-[11px]"); ui.label("90MM PVC").classes("py-1.5 text-[11px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-1.5 text-[11px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-1.5 text-[11px]")
@@ -753,17 +782,35 @@ def main_spa_page():
                                 with ui.column().classes("p-1 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
                                 with ui.column().classes("p-1 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
                                 with ui.column().classes("p-1 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
+                            
+                            # +Add MTR Buttons Row - NEW FEATURE
+                            with ui.grid(columns=4).classes("w-full bg-white text-center items-center border-t border-indigo-900"):
+                                with ui.column().classes("p-0.5 items-center w-full"):
+                                    add_63_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                with ui.column().classes("p-0.5 items-center border-x-2 border-indigo-900 w-full"):
+                                    add_90_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                with ui.column().classes("p-0.5 items-center border-r-2 border-indigo-900 w-full"):
+                                    add_110_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                                with ui.column().classes("p-0.5 items-center w-full"):
+                                    add_150_btn = ui.button("+Add MTR", icon="add").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0")
+                            
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
                                 ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px]")
                                 ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-x-2 border-indigo-900")
                                 ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-r-2 border-indigo-900")
                                 ui.label("5.5MTR").classes("py-1 font-extrabold text-indigo-900 text-[9px]")
-                            # NEW ROW - Count * MTR = Total MTR - Live multiplication
+                            # MTR Display Row - Count*6 + Extra
                             with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
                                 m63_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px]")
                                 m90_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px] border-x-2 border-indigo-900")
                                 m110_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px] border-r-2 border-indigo-900")
                                 m150_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px]")
+                            # Extra MTR Display Row
+                            with ui.grid(columns=4).classes("w-full bg-orange-50 text-center border-b border-indigo-900 items-center"):
+                                e63_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px]")
+                                e90_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px] border-x-2 border-indigo-900")
+                                e110_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px] border-r-2 border-indigo-900")
+                                e150_lbl = ui.label("").classes("py-0.5 font-bold text-orange-600 text-[8px]")
                             with ui.column().classes("w-full gap-0"):
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
                                     pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-1.5 font-bold text-green-300 text-[12px] border-b border-white/10")
@@ -771,6 +818,78 @@ def main_spa_page():
                                     di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-1.5 font-bold text-cyan-300 text-[12px]")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
                                     mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-1.5 font-bold text-yellow-200 text-[12px]")
+                        
+                        # Dialogs for Extra MTR - NEW
+                        with ui.dialog() as extra_63_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
+                            ui.label("Enter Extra Meter for 63MM Pipe").classes("text-sm font-extrabold text-slate-800 text-center w-full")
+                            ui.label("Pipe: 5 Count = 30 MTR + Extra").classes("text-xs text-slate-500 text-center w-full mb-2")
+                            extra_63_input = ui.input(placeholder="Ex: 5", value="").props("type=number outlined dense autofocus").classes("w-full font-bold text-center")
+                            with ui.row().classes("w-full justify-between gap-2 mt-3"):
+                                ui.button("Cancel", on_click=extra_63_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
+                                def set_extra_63():
+                                    try:
+                                        v = float(extra_63_input.value or 0)
+                                        extra_state["63"] = v
+                                        extra_63_dialog.close()
+                                        update_live_preview()
+                                        ui.notify(f"Extra 63MM: {v} MTR added", type="positive", timeout=2000)
+                                    except:
+                                        ui.notify("Enter valid number", type="warning")
+                                ui.button("Add", icon="check", on_click=set_extra_63).props("rounded").classes("flex-1 bg-red-500 text-white font-bold")
+                        
+                        with ui.dialog() as extra_90_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
+                            ui.label("Enter Extra Meter for 90MM Pipe").classes("text-sm font-extrabold text-slate-800 text-center w-full")
+                            extra_90_input = ui.input(placeholder="Ex: 5", value="").props("type=number outlined dense autofocus").classes("w-full font-bold text-center")
+                            with ui.row().classes("w-full justify-between gap-2 mt-3"):
+                                ui.button("Cancel", on_click=extra_90_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
+                                def set_extra_90():
+                                    try:
+                                        v = float(extra_90_input.value or 0)
+                                        extra_state["90"] = v
+                                        extra_90_dialog.close()
+                                        update_live_preview()
+                                        ui.notify(f"Extra 90MM: {v} MTR added", type="positive", timeout=2000)
+                                    except:
+                                        ui.notify("Enter valid number", type="warning")
+                                ui.button("Add", icon="check", on_click=set_extra_90).props("rounded").classes("flex-1 bg-red-500 text-white font-bold")
+                        
+                        with ui.dialog() as extra_110_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
+                            ui.label("Enter Extra Meter for 110MM Pipe").classes("text-sm font-extrabold text-slate-800 text-center w-full")
+                            extra_110_input = ui.input(placeholder="Ex: 5", value="").props("type=number outlined dense autofocus").classes("w-full font-bold text-center")
+                            with ui.row().classes("w-full justify-between gap-2 mt-3"):
+                                ui.button("Cancel", on_click=extra_110_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
+                                def set_extra_110():
+                                    try:
+                                        v = float(extra_110_input.value or 0)
+                                        extra_state["110"] = v
+                                        extra_110_dialog.close()
+                                        update_live_preview()
+                                        ui.notify(f"Extra 110MM: {v} MTR added", type="positive", timeout=2000)
+                                    except:
+                                        ui.notify("Enter valid number", type="warning")
+                                ui.button("Add", icon="check", on_click=set_extra_110).props("rounded").classes("flex-1 bg-red-500 text-white font-bold")
+                        
+                        with ui.dialog() as extra_150_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
+                            ui.label("Enter Extra Meter for 150MM DI Pipe").classes("text-sm font-extrabold text-slate-800 text-center w-full")
+                            extra_150_input = ui.input(placeholder="Ex: 5", value="").props("type=number outlined dense autofocus").classes("w-full font-bold text-center")
+                            with ui.row().classes("w-full justify-between gap-2 mt-3"):
+                                ui.button("Cancel", on_click=extra_150_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
+                                def set_extra_150():
+                                    try:
+                                        v = float(extra_150_input.value or 0)
+                                        extra_state["150"] = v
+                                        extra_150_dialog.close()
+                                        update_live_preview()
+                                        ui.notify(f"Extra 150MM: {v} MTR added", type="positive", timeout=2000)
+                                    except:
+                                        ui.notify("Enter valid number", type="warning")
+                                ui.button("Add", icon="check", on_click=set_extra_150).props("rounded").classes("flex-1 bg-red-500 text-white font-bold")
+                        
+                        # Connect buttons to dialogs
+                        add_63_btn.on_click(extra_63_dialog.open)
+                        add_90_btn.on_click(extra_90_dialog.open)
+                        add_110_btn.on_click(extra_110_dialog.open)
+                        add_150_btn.on_click(extra_150_dialog.open)
                         def parse_qty(val):
                             try:
                                 if val in (None, ""):
@@ -798,7 +917,7 @@ def main_spa_page():
                             except:
                                 return False
                         def update_live_preview():
-                            # ULTRA-FAST PARALLEL: 5*6=30 instant - No loops, direct calc - Same speed as login check
+                            # ULTRA-FAST PARALLEL: 5*6=30 + Extra MTR - Instant
                             def fast_parse(v):
                                 try:
                                     if not v: return 0
@@ -806,19 +925,35 @@ def main_spa_page():
                                     if s.startswith("-"): return 0
                                     return float(s) if s else 0
                                 except: return 0
-                            # Instant parallel calc - All 4 counts at once
+                            # Counts
                             q63 = fast_parse(c63.value); q90 = fast_parse(c90.value); q110 = fast_parse(c110.value); q150 = fast_parse(c150.value)
-                            # Instant MTR: 5*6=30 speed
-                            m63 = q63*6; m90 = q90*6; m110 = q110*6; m150 = q150*5.5
+                            # Extra MTR from state
+                            ex63 = extra_state.get("63",0); ex90 = extra_state.get("90",0); ex110 = extra_state.get("110",0); ex150 = extra_state.get("150",0)
+                            # Total MTR per pipe = count*6 + extra
+                            m63 = q63*6 + ex63; m90 = q90*6 + ex90; m110 = q110*6 + ex110; m150 = q150*5.5 + ex150
                             total_mtr = m63+m90+m110+m150
-                            # Update UI instantly - No waiting
+                            total_extra = ex63+ex90+ex110+ex150
+                            # Update UI instantly
                             pvc_total_lbl.set_text(f"Total PVC Pipes : {q63+q90+q110} Quantity")
                             di_total_lbl.set_text(f"Total DI Pipes : {q150} Quantity")
-                            mtr_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
-                            m63_lbl.set_text(f"{m63:.0f} MTR" if m63==int(m63) else f"{m63} MTR")
-                            m90_lbl.set_text(f"{m90:.0f} MTR" if m90==int(m90) else f"{m90} MTR")
-                            m110_lbl.set_text(f"{m110:.0f} MTR" if m110==int(m110) else f"{m110} MTR")
-                            m150_lbl.set_text(f"{m150:.0f} MTR" if m150==int(m150) else f"{m150} MTR")
+                            if total_extra>0:
+                                mtr_total_lbl.set_text(f"Total MTR: {total_mtr} MTR (Pipe:{total_mtr-total_extra} + Extra:{total_extra})")
+                            else:
+                                mtr_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
+                            m63_lbl.set_text(f"{m63:.1f} MTR" if m63!=int(m63) else f"{int(m63)} MTR")
+                            m90_lbl.set_text(f"{m90:.1f} MTR" if m90!=int(m90) else f"{int(m90)} MTR")
+                            m110_lbl.set_text(f"{m110:.1f} MTR" if m110!=int(m110) else f"{int(m110)} MTR")
+                            m150_lbl.set_text(f"{m150:.1f} MTR" if m150!=int(m150) else f"{int(m150)} MTR")
+                            # Extra labels
+                            e63_lbl.set_text(f"+{ex63} Extra" if ex63>0 else "")
+                            e90_lbl.set_text(f"+{ex90} Extra" if ex90>0 else "")
+                            e110_lbl.set_text(f"+{ex110} Extra" if ex110>0 else "")
+                            e150_lbl.set_text(f"+{ex150} Extra" if ex150>0 else "")
+                            # Update add buttons text to show extra if exists
+                            add_63_btn.set_text(f"+{ex63} MTR" if ex63>0 else "+Add MTR")
+                            add_90_btn.set_text(f"+{ex90} MTR" if ex90>0 else "+Add MTR")
+                            add_110_btn.set_text(f"+{ex110} MTR" if ex110>0 else "+Add MTR")
+                            add_150_btn.set_text(f"+{ex150} MTR" if ex150>0 else "+Add MTR")
                         
                         # PARALLEL LISTENERS - All 4 count inputs trigger same instant calc - Backend parallel
                         c63.on_value_change(lambda _: update_live_preview())
@@ -832,6 +967,8 @@ def main_spa_page():
                         c150.on("input", lambda _: update_live_preview())
                         def save_daily_report():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
+                            ex63 = extra_state.get("63",0); ex90 = extra_state.get("90",0); ex110 = extra_state.get("110",0); ex150 = extra_state.get("150",0)
+                            total_mtr_calc = (q63*6+ex63)+(q90*6+ex90)+(q110*6+ex110)+(q150*5.5+ex150)
                             try:
                                 selected_date = datetime.datetime.strptime((home_date_input.value or "").strip(), "%Y-%m-%d").date()
                             except Exception:
@@ -857,17 +994,31 @@ def main_spa_page():
                                 user.default_report_title = current_title
                                 user.save(update_fields=['default_report_title'])
                                 CACHE["users"][user.email] = user
+                            # Save with extra MTR
                             try:
-                                DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                                DailyReport.objects.create(
+                                    user=user, report_title=current_title, report_date=selected_date, 
+                                    area_name=area_val, labour_name=labour_val, 
+                                    qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150,
+                                    extra_63mm=ex63, extra_90mm=ex90, extra_110mm=ex110, extra_150mm=ex150,
+                                    total_mtr=total_mtr_calc,
+                                    total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, 
+                                    price_sum=float(total_mtr_calc)
+                                )
                             except Exception as ex:
-                                print(f"Save with labour failed: {ex}, trying without labour")
+                                print(f"Save with extra failed: {ex}, trying simpler")
                                 try:
-                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, total_mtr=total_mtr_calc, price_sum=float(total_mtr_calc))
                                 except Exception as ex2:
-                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
-                            c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; area_input.value = ""; labour_input.value = ""; update_live_preview()
+                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_qty=q63+q90+q110+q150, price_sum=float(total_mtr_calc))
+                            # Reset all
+                            c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; 
+                            area_input.value = ""; labour_input.value = ""; 
+                            extra_state["63"]=0; extra_state["90"]=0; extra_state["110"]=0; extra_state["150"]=0;
+                            extra_63_input.value=""; extra_90_input.value=""; extra_110_input.value=""; extra_150_input.value="";
+                            update_live_preview()
                             get_areas(); get_labours(); refresh_suggestions(); refresh_labour_suggestions()
-                            ui.notify(f"✅ Data Saved! Area:{area_val}", type="positive", position="top", timeout=2000)
+                            ui.notify(f"✅ Data Saved! Area:{area_val} Total MTR:{total_mtr_calc} (Extra:{ex63+ex90+ex110+ex150})", type="positive", position="top", timeout=3000)
                         ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
 
         def build_filter():
@@ -925,8 +1076,16 @@ def main_spa_page():
                                                     ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
                                                 ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
                                                 with ui.row().classes("w-full justify-between items-center mt-1"):
-                                                    ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[11px] font-bold text-slate-600")
-                                                    ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
+                                                    ex = get_q(report,'extra_63mm',0)+get_q(report,'extra_90mm',0)+get_q(report,'extra_110mm',0)+get_q(report,'extra_150mm',0)
+                                                    tm = get_q(report,'total_mtr',0)
+                                                    if ex>0:
+                                                        ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')} | Extra:{ex} MTR").classes("text-[11px] font-bold text-slate-600")
+                                                    else:
+                                                        ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[11px] font-bold text-slate-600")
+                                                    if tm>0:
+                                                        ui.label(f"MTR:{tm} | Qty:{report.total_qty}").classes("text-xs font-extrabold text-emerald-600")
+                                                    else:
+                                                        ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
                                             with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
                                                 edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1 bg-yellow-300 text-black font-bold border border-yellow-400")
                                                 del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-500 text-white font-bold")
