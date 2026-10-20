@@ -17,34 +17,81 @@ except:
 from django.db import connection
 
 def ensure_neon_fast():
-    # SAFE VERSION - No ALTER TYPE that causes syntax error, use Django migration safe method
+    # SAFE VERSION - Works for both Postgres (Neon) and SQLite (Local)
     try:
         with connection.cursor() as cursor:
-            # Check if tables exist first
-            cursor.execute("SELECT to_regclass('models_app_dailyreport');")
-            table_exists = cursor.fetchone()[0] is not None
+            # Check if tables exist - Compatible with both DBs
+            try:
+                # Postgres (Neon) way
+                cursor.execute("SELECT to_regclass('models_app_dailyreport');")
+                table_exists = cursor.fetchone()[0] is not None
+            except Exception:
+                # SQLite way - check sqlite_master
+                try:
+                    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='models_app_dailyreport';")
+                    table_exists = cursor.fetchone() is not None
+                except Exception:
+                    table_exists = True  # Assume exists, let Django handle
             if not table_exists:
                 print("⏳ Tables not yet created - skipping ALTER, will be created by Django", flush=True)
                 return
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_email ON models_app_appuser (email);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_user_date ON models_app_dailyreport (user_id, report_date);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_date ON models_app_dailyreport (report_date);")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_area ON models_app_savedarea (user_id);")
-            # SAFE: Add columns if not exists - no TYPE change that causes syntax error
-            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
-            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS qty_150mm DOUBLE PRECISION DEFAULT 0;")
-            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_pvc DOUBLE PRECISION DEFAULT 0;")
-            cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_di DOUBLE PRECISION DEFAULT 0;")
-            # For point values, we don't ALTER TYPE in code - we handle in models as FloatField
-            # Old integer data will still work as float in Django
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS models_app_savedlabour (
-                    id BIGSERIAL PRIMARY KEY,
-                    user_id BIGINT NOT NULL REFERENCES models_app_appuser(id) ON DELETE CASCADE,
-                    labour_name VARCHAR(150) NOT NULL,
-                    UNIQUE(user_id, labour_name)
-                );
-            """)
+            # Indexes - work on both
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_email ON models_app_appuser (email);")
+            except Exception:
+                pass
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_user_date ON models_app_dailyreport (user_id, report_date);")
+            except Exception:
+                pass
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_date ON models_app_dailyreport (report_date);")
+            except Exception:
+                pass
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_area ON models_app_savedarea (user_id);")
+            except Exception:
+                pass
+            # Add columns - Postgres uses ADD COLUMN IF NOT EXISTS, SQLite doesn't support IF NOT EXISTS for column
+            is_sqlite = connection.vendor == 'sqlite'
+            if is_sqlite:
+                # SQLite - try to add, ignore if exists
+                for sql in [
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN labour_name VARCHAR(150) DEFAULT '';",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN qty_150mm REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN total_pvc REAL DEFAULT 0;",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN total_di REAL DEFAULT 0;",
+                ]:
+                    try:
+                        cursor.execute(sql)
+                    except Exception:
+                        pass
+                # Create labour table for SQLite
+                try:
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS models_app_savedlabour (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            user_id INTEGER NOT NULL,
+                            labour_name VARCHAR(150) NOT NULL,
+                            UNIQUE(user_id, labour_name)
+                        );
+                    """)
+                except Exception as e:
+                    print(f"Labour table create skip: {e}")
+            else:
+                # Postgres (Neon)
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS qty_150mm DOUBLE PRECISION DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_pvc DOUBLE PRECISION DEFAULT 0;")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS total_di DOUBLE PRECISION DEFAULT 0;")
+                cursor.execute("""
+                    CREATE TABLE IF NOT EXISTS models_app_savedlabour (
+                        id BIGSERIAL PRIMARY KEY,
+                        user_id BIGINT NOT NULL REFERENCES models_app_appuser(id) ON DELETE CASCADE,
+                        labour_name VARCHAR(150) NOT NULL,
+                        UNIQUE(user_id, labour_name)
+                    );
+                """)
             print("✅ FAST INDEX OK - Point values handled by FloatField", flush=True)
     except Exception as e:
         print(f"Index skip (safe): {e}", flush=True)
@@ -59,6 +106,9 @@ except:
 from django.contrib.auth.hashers import make_password, check_password
 from django.db.models import Sum
 from django.utils import timezone
+PORT = int(os.getenv("PORT", "8080"))
+STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
+
 def is_valid_6digit(pwd):
     return isinstance(pwd, str) and len(pwd)==6 and pwd.isdigit()
 
