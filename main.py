@@ -75,16 +75,16 @@ def generate_single_csv(report):
     writer.writerow([])
     writer.writerow(["PVC PIPES"])
     writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
-    writer.writerow([1, "63MM PVC", get_q(report,'qty_63mm'), "6 MTR", f"{get_q(report,'qty_63mm')*6} MTR"])
-    writer.writerow([2, "90MM PVC", get_q(report,'qty_90mm'), "12 MTR", f"{get_q(report,'qty_90mm')*12} MTR"])
-    writer.writerow([3, "110MM PVC", get_q(report,'qty_110mm'), "18 MTR", f"{get_q(report,'qty_110mm')*18} MTR"])
+    writer.writerow([1, "63MM PVC", get_q(report,'qty_63mm'), "6MTR per PIPES", f"{get_q(report,'qty_63mm')*6} MTR"])
+    writer.writerow([2, "90MM PVC", get_q(report,'qty_90mm'), "6MTR per PIPES", f"{get_q(report,'qty_90mm')*6} MTR"])
+    writer.writerow([3, "110MM PVC", get_q(report,'qty_110mm'), "6MTR per PIPES", f"{get_q(report,'qty_110mm')*6} MTR"])
     pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
-    pvc_mtr = get_q(report,'qty_63mm')*6 + get_q(report,'qty_90mm')*12 + get_q(report,'qty_110mm')*18
+    pvc_mtr = (get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm'))*6
     writer.writerow([f"PVC Total: {pvc} Qty | {pvc_mtr} MTR"])
     writer.writerow([])
     writer.writerow(["DI PIPES"])
     writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
-    writer.writerow([1, "150MM DI", get_q(report,'qty_150mm'), "5.5 MTR", f"{get_q(report,'qty_150mm')*5.5} MTR"])
+    writer.writerow([1, "150MM DI", get_q(report,'qty_150mm'), "5.5MTR per PIPES", f"{get_q(report,'qty_150mm')*5.5} MTR"])
     di = get_q(report,'qty_150mm')
     di_mtr = di*5.5
     writer.writerow([f"DI Total: {di} Qty | {di_mtr} MTR"])
@@ -103,7 +103,7 @@ def generate_single_excel(report):
         ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
         for col in range(1,5):
             cell = ws.cell(row=4, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", get_q(report,'qty_63mm'), "6 MTR"), ("90MM PVC", get_q(report,'qty_90mm'), "12 MTR"), ("110MM PVC", get_q(report,'qty_110mm'), "18 MTR"), ("150MM DI", get_q(report,'qty_150mm'), "5.5 MTR")], start=1):
+        for idx, (dia, qty, unit) in enumerate([("63MM PVC", get_q(report,'qty_63mm'), "6MTR per PIPES"), ("90MM PVC", get_q(report,'qty_90mm'), "6MTR per PIPES"), ("110MM PVC", get_q(report,'qty_110mm'), "6MTR per PIPES"), ("150MM DI", get_q(report,'qty_150mm'), "5.5MTR per PIPES")], start=1):
             ws.append([idx, dia, qty, unit])
             r = ws.max_row
             for c in range(1,5): ws.cell(row=r, column=c).alignment = Alignment(horizontal='center'); ws.cell(row=r, column=c).border = thin
@@ -130,11 +130,12 @@ def generate_single_pdf(report):
         c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'}")
         c.drawCentredString(width/2, height-75, f"Date: {report.report_date.strftime('%d-%m-%Y')}")
         y = height - 110
-        # PVC PIPES - Center
-        c.setFillColor(colors.HexColor("#059669"))
-        c.setFont("Helvetica-Bold", 13)
+        # PVC PIPES - Center - RED COLOR + Space
+        y -= 10  # Space above
+        c.setFillColor(colors.HexColor("#DC2626"))  # RED
+        c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(width/2, y, "PVC PIPES")
-        y -= 20
+        y -= 25  # Space below
         # Header
         c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
         c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11)
@@ -143,9 +144,9 @@ def generate_single_pdf(report):
         pvc_total = 0
         pvc_mtr_total = 0
         for idx, (dia, qty, unit, mtr) in enumerate([
-            ("63MM PVC", get_q(report,'qty_63mm'), "6 MTR", get_q(report,'qty_63mm')*6),
-            ("90MM PVC", get_q(report,'qty_90mm'), "12 MTR", get_q(report,'qty_90mm')*12),
-            ("110MM PVC", get_q(report,'qty_110mm'), "18 MTR", get_q(report,'qty_110mm')*18)
+            ("63MM PVC", get_q(report,'qty_63mm'), "6MTR per PIPES", get_q(report,'qty_63mm')*6),
+            ("90MM PVC", get_q(report,'qty_90mm'), "6MTR per PIPES", get_q(report,'qty_90mm')*6),
+            ("110MM PVC", get_q(report,'qty_110mm'), "6MTR per PIPES", get_q(report,'qty_110mm')*6)
         ], start=1):
             if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
             c.setFillColor(colors.black)
@@ -158,11 +159,12 @@ def generate_single_pdf(report):
         c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11)
         c.drawString(70, y+2, f"PVC Total: {pvc_total} Qty | {pvc_mtr_total} MTR")
         y -= 30
-        # DI PIPES - Center
-        c.setFillColor(colors.HexColor("#059669"))
-        c.setFont("Helvetica-Bold", 13)
+        # DI PIPES - Center - RED COLOR + Space
+        y -= 15  # Space above
+        c.setFillColor(colors.HexColor("#DC2626"))  # RED
+        c.setFont("Helvetica-Bold", 14)
         c.drawCentredString(width/2, y, "DI PIPES")
-        y -= 20
+        y -= 25  # Space below
         # DI Header
         c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
         c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11)
@@ -172,7 +174,7 @@ def generate_single_pdf(report):
         di_mtr = di_qty * 5.5
         c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
         c.setFillColor(colors.black)
-        c.drawString(70, y, "1"); c.drawString(140, y, "150MM DI"); c.drawString(260, y, str(di_qty)); c.drawString(350, y, "5.5 MTR"); c.drawString(430, y, f"{di_mtr} MTR")
+        c.drawString(70, y, "1"); c.drawString(140, y, "150MM DI"); c.drawString(260, y, str(di_qty)); c.drawString(350, y, "5.5MTR per PIPES"); c.drawString(430, y, f"{di_mtr} MTR")
         y -= 22
         y -= 5
         c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
@@ -187,7 +189,7 @@ def generate_single_pdf(report):
 def generate_month_csv(title, period_text, t63, t90, t110, t150=0):
     output = io.StringIO(); writer = csv.writer(output)
     writer.writerow([title]); writer.writerow([period_text]); writer.writerow([]); writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-    writer.writerow([1, "63MM PVC", t63, "6 MTR"]); writer.writerow([2, "90MM PVC", t90, "12 MTR"]); writer.writerow([3, "110MM PVC", t110, "18 MTR"]); writer.writerow([4, "150MM DI", t150, "5.5 MTR"]); writer.writerow([])
+    writer.writerow([1, "63MM PVC", t63, "6MTR per PIPES"]); writer.writerow([2, "90MM PVC", t90, "6MTR per PIPES"]); writer.writerow([3, "110MM PVC", t110, "6MTR per PIPES"]); writer.writerow([4, "150MM DI", t150, "5.5MTR per PIPES"]); writer.writerow([])
     writer.writerow([f"Total PVC: {t63+t90+t110} Qty"]); writer.writerow([f"Total DI: {t150} Qty"]); writer.writerow([f"Grand Total: {t63+t90+t110+t150} Qty"])
     return output.getvalue().encode("utf-8")
 
@@ -204,7 +206,7 @@ def generate_month_excel(title, period_text, t63, t90, t110, t150=0):
         ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
         r = ws.max_row
         for col in range(1,5): cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6 MTR"), ("90MM PVC", t90, "12 MTR"), ("110MM PVC", t110, "18 MTR"), ("150MM DI", t150, "5.5 MTR")], start=1):
+        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6MTR per PIPES"), ("90MM PVC", t90, "6MTR per PIPES"), ("110MM PVC", t110, "6MTR per PIPES"), ("150MM DI", t150, "5.5MTR per PIPES")], start=1):
             ws.append([idx, dia, qty, unit]); rr = ws.max_row
             for col in range(1,5): ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
         ws.append([]); ws.append(["", "Total PVC", f"{t63+t90+t110} Qty", ""]); ws.append(["", "Total DI", f"{t150} Qty", ""]); ws.append(["", "Grand Total", f"{t63+t90+t110+t150} Qty", ""])
@@ -228,7 +230,7 @@ def generate_month_pdf(title, period_text, t63, t90, t110, t150=0):
         c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
         c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11); c.drawString(70, y+2, "Sr.No"); c.drawString(150, y+2, "Pipe Dia"); c.drawString(270, y+2, "Quantity"); c.drawString(390, y+2, "UNIT")
         y -= 30; c.setFont("Helvetica", 11)
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6 MTR"), ("90MM PVC", t90, "12 MTR"), ("110MM PVC", t110, "18 MTR"), ("150MM DI", t150, "5.5 MTR")], start=1):
+        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6MTR per PIPES"), ("90MM PVC", t90, "6MTR per PIPES"), ("110MM PVC", t110, "6MTR per PIPES"), ("150MM DI", t150, "5.5MTR per PIPES")], start=1):
             if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
             c.setFillColor(colors.black); c.drawString(70, y, str(idx)); c.drawString(150, y, dia); c.drawString(270, y, str(qty)); c.drawString(390, y, unit); y -= 22
         y -= 10; c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
@@ -558,10 +560,10 @@ def main_spa_page():
                                 with ui.column().classes("p-1.5 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
                                 with ui.column().classes("p-1.5 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=1").classes("w-full")
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
-                                ui.label("6 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px]")
-                                ui.label("12 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px] border-x-2 border-indigo-900")
-                                ui.label("18 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px] border-r-2 border-indigo-900")
-                                ui.label("5.5 MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[10px]")
+                                ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px]")
+                                ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px] border-x-2 border-indigo-900")
+                                ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px] border-r-2 border-indigo-900")
+                                ui.label("5.5MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px]")
                             # NEW ROW - Count * MTR = Total MTR - Live multiplication
                             with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
                                 m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px]")
@@ -622,28 +624,20 @@ def main_spa_page():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
                             pvc_total_lbl.set_text(f"Total PVC Pipes : {q63+q90+q110} Quantity")
                             di_total_lbl.set_text(f"Total DI Pipes : {q150} Quantity")
-                            # MTR calculation - Count * Unit - Live
+                            # MTR calculation - NEW: 63,90,110 all 6*count, 150 only 5.5*count
                             m63 = q63 * 6
-                            m90 = q90 * 12
-                            m110 = q110 * 18
+                            m90 = q90 * 6
+                            m110 = q110 * 6
                             m150 = q150 * 5.5
-                            m63_lbl.set_text(f"{m63} MTR" if m63%1==0 else f"{m150} MTR")
-                            m90_lbl.set_text(f"{m90} MTR")
-                            m110_lbl.set_text(f"{m110} MTR")
-                            m150_lbl.set_text(f"{m150} MTR" if m150==int(m150) else f"{m150} MTR")
-                            # Fix 63
-                            m63_lbl.set_text(f"{int(m63)} MTR")
                             total_mtr = m63 + m90 + m110 + m150
                             mtr_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
-                            # MTR labels
-                            m63_lbl.set_text(f"{int(q63*6)} MTR")
-                            m90_lbl.set_text(f"{int(q90*12)} MTR")
-                            m110_lbl.set_text(f"{int(q110*18)} MTR")
-                            # 5.5 may be float
-                            if q150*5.5 == int(q150*5.5):
-                                m150_lbl.set_text(f"{int(q150*5.5)} MTR")
+                            m63_lbl.set_text(f"{int(m63)} MTR")
+                            m90_lbl.set_text(f"{int(m90)} MTR")
+                            m110_lbl.set_text(f"{int(m110)} MTR")
+                            if m150 == int(m150):
+                                m150_lbl.set_text(f"{int(m150)} MTR")
                             else:
-                                m150_lbl.set_text(f"{q150*5.5} MTR")
+                                m150_lbl.set_text(f"{m150} MTR")
                         c63.on_value_change(lambda: update_live_preview()); c90.on_value_change(lambda: update_live_preview()); c110.on_value_change(lambda: update_live_preview()); c150.on_value_change(lambda: update_live_preview())
                         def save_daily_report():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
@@ -818,7 +812,7 @@ def main_spa_page():
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
-                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6 MTR"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "12 MTR"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "18 MTR"}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "unit": "5.5 MTR"}]
+                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6MTR per PIPES"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "6MTR per PIPES"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "6MTR per PIPES"}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "unit": "5.5MTR per PIPES"}]
                                     columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
                                     ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
                                     with ui.row().classes("w-full justify-center gap-2 mt-2"):
@@ -865,7 +859,7 @@ def main_spa_page():
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
                                 ui.label(f"{get_q(report,'qty_63mm')}").classes("py-2 font-extrabold text-xs"); ui.label(f"{get_q(report,'qty_90mm')}").classes("py-2 font-extrabold text-xs border-x border-gray-200"); ui.label(f"{get_q(report,'qty_110mm')}").classes("py-2 font-extrabold text-xs border-r border-gray-200"); ui.label(f"{get_q(report,'qty_150mm')}").classes("py-2 font-extrabold text-xs bg-green-50 text-green-700")
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y border-indigo-900 items-center"):
-                                ui.label(f"{int(get_q(report,'qty_63mm')*6)} MTR").classes("py-1.5 font-bold text-[10px]"); ui.label(f"{int(get_q(report,'qty_90mm')*12)} MTR").classes("py-1.5 font-bold text-[10px] border-x border-gray-200"); ui.label(f"{int(get_q(report,'qty_110mm')*18)} MTR").classes("py-1.5 font-bold text-[10px] border-r border-gray-200"); ui.label(f"{get_q(report,'qty_150mm')*5.5} MTR").classes("py-1.5 font-bold text-[10px] bg-green-50")
+                                ui.label(f"{int(get_q(report,'qty_63mm')*6)} MTR").classes("py-1.5 font-bold text-[10px]"); ui.label(f"{int(get_q(report,'qty_90mm')*6)} MTR").classes("py-1.5 font-bold text-[10px] border-x border-gray-200"); ui.label(f"{int(get_q(report,'qty_110mm')*6)} MTR").classes("py-1.5 font-bold text-[10px] border-r border-gray-200"); ui.label(f"{get_q(report,'qty_150mm')*5.5} MTR").classes("py-1.5 font-bold text-[10px] bg-green-50")
                             with ui.grid(columns=2).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white text-center items-center"):
                                 pvc = get_q(report,'qty_63mm')+get_q(report,'qty_90mm')+get_q(report,'qty_110mm')
                                 di = get_q(report,'qty_150mm')
