@@ -8,26 +8,15 @@ def init_django():
 
     DATABASE_URL = os.getenv("DATABASE_URL", "")
 
-    if not DATABASE_URL:
-        try:
-            env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-            if os.path.exists(env_path):
-                with open(env_path, 'r') as f:
-                    for line in f:
-                        if line.strip().startswith("DATABASE_URL="):
-                            DATABASE_URL = line.strip().split("=", 1)[1].strip().strip('"').strip("'")
-                            break
-        except Exception:
-            pass
-
     if DATABASE_URL:
+        # NEON - Postgres (Live)
         try:
             import dj_database_url
             DATABASES = {
                 'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
             }
-            print(f"✅ DATABASE: NEON POSTGRES (Production) - Data Permanent", flush=True)
         except ImportError:
+            # Fallback if dj-database-url not installed
             DATABASES = {
                 "default": {
                     "ENGINE": "django.db.backends.postgresql",
@@ -40,6 +29,7 @@ def init_django():
                 }
             }
     else:
+        # LOCAL - SQLite
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         DATABASES = {
             "default": {
@@ -47,7 +37,6 @@ def init_django():
                 "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
             }
         }
-        print(f"⚠  DATABASE: LOCAL SQLite", flush=True)
 
     settings.configure(
         SECRET_KEY=os.getenv("SECRET_KEY", "my-super-secret-django-key-12345"),
