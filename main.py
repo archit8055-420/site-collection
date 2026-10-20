@@ -59,94 +59,8 @@ except:
 from django.contrib.auth.hashers import make_password, check_password
 from django.db.models import Sum
 from django.utils import timezone
-PORT = int(os.getenv("PORT", "8080"))
-STORAGE_SECRET = os.getenv("STORAGE_SECRET", "my_persistent_secret_key_123")
-
-def send_gmail_smtp(to_email, username, reset_link):
-    """FREE method - sends to ALL emails using Gmail - No domain needed!"""
-    import smtplib, socket
-    from email.mime.text import MIMEText
-    from email.mime.multipart import MIMEMultipart
-    gmail_user = os.getenv("GMAIL_USER", "").strip() or os.getenv("EMAIL_FROM_GMAIL", "").strip()
-    gmail_pass = os.getenv("GMAIL_APP_PASSWORD", "").strip() or os.getenv("GMAIL_PASSWORD", "").strip()
-    if not gmail_user or not gmail_pass:
-        return False, "GMAIL_NOT_SET"
-    try:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = f"Reset Password - {username}"
-        msg["From"] = gmail_user
-        msg["To"] = to_email
-        html = f"""<div style="font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px; border:2px solid #10B981;">
-        <h2 style="color:#059669;">Hi {username}!</h2>
-        <p>Reset for: <b>{to_email}</b></p>
-        <p>Click below (15 min valid):</p>
-        <a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">Reset Password</a>
-        <p style="font-size:12px; color:#666;">Link: {reset_link}</p></div>"""
-        msg.attach(MIMEText(html, "html"))
-        # Timeout 15 sec - Render free sometimes blocks SMTP, so fail fast and show link
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=15) as server:
-            server.starttls()
-            server.login(gmail_user, gmail_pass)
-            server.sendmail(gmail_user, to_email, msg.as_string())
-        print(f"✅ Gmail OK to {to_email}", flush=True)
-        return True, f"Gmail sent to {to_email}"
-    except socket.timeout:
-        print(f"❌ Gmail timeout to {to_email} - Render may block SMTP, fallback to link", flush=True)
-        return False, f"Gmail timeout - but link is ready: {reset_link}"
-    except Exception as e:
-        print(f"❌ Gmail fail to {to_email}: {e}", flush=True)
-        return False, f"Gmail failed: {e} - Link: {reset_link}"
-
-def send_reset_email_resend_http(to_email, username, reset_link):
-    """FREE METHOD - Priority: 1. Google Apps Script HTTP (works on Render FREE) 2. Resend HTTP 3. Gmail SMTP"""
-    import requests
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    from_email = os.getenv("EMAIL_FROM", "onboarding@resend.dev").strip()
-    
-    # STEP 1: FREE Google Apps Script HTTP - Sends REAL mail to ANY email, no domain needed, no SMTP block!
-    script_url = os.getenv("GOOGLE_APPS_SCRIPT_URL", "").strip()
-    if script_url:
-        success, msg = send_free_google_apps_script(to_email, username, reset_link)
-        if success:
-            print(f"✅ FREE Apps Script sent REAL MAIL to {to_email}", flush=True)
-            return True, msg
-        print(f"Apps Script failed: {msg}, trying Resend...", flush=True)
-    
-    # STEP 2: Resend HTTP (works on Render, but onboarding only to owner)
-    if api_key:
-        try:
-            html = f"""<div style="font-family:Arial; max-width:500px; margin:0 auto; background:white; padding:30px; border-radius:16px; border:2px solid #10B981;">
-            <h2>Hi {username}!</h2><p>Reset for: <b>{to_email}</b></p>
-            <a href="{reset_link}" style="display:inline-block; background:#059669; color:white; padding:14px 28px; text-decoration:none; border-radius:9999px; font-weight:bold; margin:20px 0;">Reset Password</a>
-            <p style="font-size:12px;">Link 15 min: {reset_link}</p></div>"""
-            payload = {"from": from_email, "to": [to_email], "subject": f"Reset Password - {username}", "html": html}
-            r = requests.post("https://api.resend.com/emails", headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}, json=payload, timeout=15)
-            print(f"Resend {r.status_code} FROM:{from_email} TO:{to_email} -> {r.text[:300]}", flush=True)
-            if r.status_code in (200,201):
-                return True, f"Resend sent to {to_email}"
-            txt = r.text
-            if "only send testing emails to your own" in txt:
-                # Try Gmail SMTP as last fallback
-                g_user = os.getenv("GMAIL_USER","").strip()
-                g_pass = os.getenv("GMAIL_APP_PASSWORD","").strip()
-                if g_user and g_pass:
-                    s,m = send_gmail_smtp(to_email, username, reset_link)
-                    if s: return True,m
-                return False, f"FREE_LIMIT::Onboarding only to owner. Use FREE Apps Script method for ALL emails! See GOOGLE_APPS_SCRIPT_URL"
-            return False, f"Resend failed {r.status_code}: {txt[:300]}"
-        except Exception as e:
-            print(f"Resend exception: {e}", flush=True)
-    
-    # STEP 3: Gmail SMTP fallback (may be blocked on Render FREE)
-    g_user = os.getenv("GMAIL_USER","").strip()
-    g_pass = os.getenv("GMAIL_APP_PASSWORD","").strip()
-    if g_user and g_pass:
-        return send_gmail_smtp(to_email, username, reset_link)
-    
-    return False, "No email method - Set GOOGLE_APPS_SCRIPT_URL (FREE) or RESEND_API_KEY"
-
 def is_valid_6digit(pwd):
-    return pwd and len(pwd)==6 and pwd.isdigit()
+    return isinstance(pwd, str) and len(pwd)==6 and pwd.isdigit()
 
 @app.get("/health")
 def health_check():
@@ -443,6 +357,32 @@ def main_spa_page():
                     pass_input = ui.input("Password (6 digits)", value=saved_pwd, placeholder="6 digits only", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6").classes("w-full")
                     login_btn = ui.button("⚡ Log In", icon="bolt").props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg")
                     status_label = ui.label("").classes("text-xs text-center font-bold text-green-600")
+                    
+                    # FAST LOGIN: Check as typing - like 5*6=30 instant - Email+Pwd cached? Instant home
+                    def fast_check_login():
+                        e = (email_input.value or "").strip()
+                        p = (pass_input.value or "").strip()
+                        if len(p)==6 and p.isdigit() and e:
+                            pwd_key = hashlib.sha256(f"{e}:{p}".encode()).hexdigest()
+                            if pwd_key in CACHE["pwd_verified"] and e in CACHE["users"]:
+                                status_label.set_text("✅ Ready - Click Login for instant home!")
+                                login_btn.classes(add="bg-green-700", remove="bg-gradient-to-r from-emerald-600 to-green-600")
+                            else:
+                                status_label.set_text("⏳ 6-digit entered - Click to verify")
+                        elif len(p)>0 and len(p)<6:
+                            status_label.set_text(f"⏳ {len(p)}/6 digits...")
+                        elif len(p)==6 and not p.isdigit():
+                            status_label.set_text("❌ Only digits allowed")
+                        else:
+                            status_label.set_text("")
+                    
+                    email_input.on_value_change(lambda _: fast_check_login())
+                    pass_input.on_value_change(lambda _: fast_check_login())
+                    # Auto-check on load if saved credentials exist
+                    def auto_check_saved():
+                        if saved_email and saved_pwd and is_valid_6digit(saved_pwd):
+                            fast_check_login()
+                    ui.timer(0.5, auto_check_saved, once=True)
                     with ui.row().classes("w-full justify-center mt-1"):
                         forgot_link = ui.label("Forgot password?").classes("forgot-link")
                     reg_btn = ui.button("Register New Account", icon="person_add").props("outline rounded no-caps").classes("w-full text-emerald-600 font-bold text-sm border-emerald-500 mt-2")
@@ -484,6 +424,7 @@ def main_spa_page():
             build_home()
 
         def show_filter():
+            # INSTANT UI: Show filter view immediately - No waiting 1-2 sec - UI first, DB later (parallel)
             login_view.classes(add="spa-hidden")
             home_view.classes(add="spa-hidden")
             filter_view.classes(remove="spa-hidden")
@@ -491,7 +432,18 @@ def main_spa_page():
             profile_view.classes(add="spa-hidden")
             register_view.classes(add="spa-hidden")
             forgot_view.classes(add="spa-hidden")
-            build_filter()
+            # Show loading skeleton instantly
+            filter_view.clear()
+            with filter_view:
+                with ui.column().classes("w-full max-w-md items-center gap-2"):
+                    with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white p-5 border-2 border-green-200 items-center"):
+                        ui.spinner(size="lg", color="green")
+                        ui.label("Loading reports...").classes("text-sm font-bold text-green-700 mt-2")
+            # Load real data in background - UI + DB parallel
+            async def load_filter_bg():
+                await asyncio.sleep(0.05)  # Let UI render first
+                build_filter()
+            ui.timer(0.05, lambda: asyncio.create_task(load_filter_bg()), once=True)
 
         def show_filter_detail(report):
             state["selected_report"] = report
@@ -645,20 +597,22 @@ def main_spa_page():
             except Exception:
                 pass
             with home_view:
-                with ui.column().classes("w-full max-w-md items-center gap-2"):
-                    with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
-                        ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-xs shadow-sm")
-                        today_str = today_ist().isoformat()
-                        with ui.row().classes("date-pill items-center justify-center"):
-                            home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-xs font-bold")
-                        with ui.button(icon="account_circle").props("round unelevated dense").classes("bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"):
-                            with ui.menu().classes("rounded-xl shadow-xl border border-purple-200"):
-                                with ui.menu_item(on_click=show_profile).classes("hover:bg-purple-50 font-semibold"):
-                                    with ui.row().classes("items-center gap-2"): ui.icon("person", color="purple"); ui.label("Profile")
-                                ui.separator()
-                                with ui.menu_item(on_click=show_filter).classes("hover:bg-purple-50 font-semibold"):
-                                    with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
-                    with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-3 sm:p-5 border-2 border-green-200"):
+                with ui.column().classes("w-full max-w-md items-center gap-1"):
+                    with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-2 sm:p-3 border-2 border-green-200"):
+                        # COMPACT TOP BAR INSIDE BOX - Back + Date + Profile in one line - No extra space
+                        with ui.row().classes("w-full justify-between items-center mb-1.5 px-1 py-1 bg-slate-50 rounded-full border"):
+                            ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-[11px] shadow-sm")
+                            today_str = today_ist().isoformat()
+                            with ui.row().classes("date-pill-compact items-center justify-center"):
+                                home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-[11px] font-bold")
+                            with ui.button(icon="account_circle").props("round unelevated dense").classes("bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"):
+                                with ui.menu().classes("rounded-xl shadow-xl border border-purple-200"):
+                                    with ui.menu_item(on_click=show_profile).classes("hover:bg-purple-50 font-semibold"):
+                                        with ui.row().classes("items-center gap-2"): ui.icon("person", color="purple"); ui.label("Profile")
+                                    ui.separator()
+                                    with ui.menu_item(on_click=show_filter).classes("hover:bg-purple-50 font-semibold"):
+                                        with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
+                        
                         with ui.row().classes("w-full justify-center mb-2.5"):
                             title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
                             def save_title_persist():
@@ -794,32 +748,38 @@ def main_spa_page():
                             except:
                                 return False
                         def update_live_preview():
-                            # Allow decimal like 3.2, 9.9 + No negative check
-                            for c in [c63, c90, c110, c150]:
-                                if c.value and c.value not in (None, ""):
-                                    s = str(c.value).strip()
-                                    if s.startswith("-"):
-                                        ui.notify("Negative not allowed! -5 not allowed", type="warning", position="top")
-                                        c.value = "0"
-                                        c.update()
-                            q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
+                            # ULTRA-FAST PARALLEL: 5*6=30 instant - No loops, direct calc - Same speed as login check
+                            def fast_parse(v):
+                                try:
+                                    if not v: return 0
+                                    s=str(v).strip()
+                                    if s.startswith("-"): return 0
+                                    return float(s) if s else 0
+                                except: return 0
+                            # Instant parallel calc - All 4 counts at once
+                            q63 = fast_parse(c63.value); q90 = fast_parse(c90.value); q110 = fast_parse(c110.value); q150 = fast_parse(c150.value)
+                            # Instant MTR: 5*6=30 speed
+                            m63 = q63*6; m90 = q90*6; m110 = q110*6; m150 = q150*5.5
+                            total_mtr = m63+m90+m110+m150
+                            # Update UI instantly - No waiting
                             pvc_total_lbl.set_text(f"Total PVC Pipes : {q63+q90+q110} Quantity")
                             di_total_lbl.set_text(f"Total DI Pipes : {q150} Quantity")
-                            # MTR calculation - NEW: 63,90,110 all 6*count, 150 only 5.5*count
-                            m63 = q63 * 6
-                            m90 = q90 * 6
-                            m110 = q110 * 6
-                            m150 = q150 * 5.5
-                            total_mtr = m63 + m90 + m110 + m150
                             mtr_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
-                            m63_lbl.set_text(f"{int(m63)} MTR")
-                            m90_lbl.set_text(f"{int(m90)} MTR")
-                            m110_lbl.set_text(f"{int(m110)} MTR")
-                            if m150 == int(m150):
-                                m150_lbl.set_text(f"{int(m150)} MTR")
-                            else:
-                                m150_lbl.set_text(f"{m150} MTR")
-                        c63.on_value_change(lambda: update_live_preview()); c90.on_value_change(lambda: update_live_preview()); c110.on_value_change(lambda: update_live_preview()); c150.on_value_change(lambda: update_live_preview())
+                            m63_lbl.set_text(f"{m63:.0f} MTR" if m63==int(m63) else f"{m63} MTR")
+                            m90_lbl.set_text(f"{m90:.0f} MTR" if m90==int(m90) else f"{m90} MTR")
+                            m110_lbl.set_text(f"{m110:.0f} MTR" if m110==int(m110) else f"{m110} MTR")
+                            m150_lbl.set_text(f"{m150:.0f} MTR" if m150==int(m150) else f"{m150} MTR")
+                        
+                        # PARALLEL LISTENERS - All 4 count inputs trigger same instant calc - Backend parallel
+                        c63.on_value_change(lambda _: update_live_preview())
+                        c90.on_value_change(lambda _: update_live_preview())
+                        c110.on_value_change(lambda _: update_live_preview())
+                        c150.on_value_change(lambda _: update_live_preview())
+                        # Also on input (faster than change)
+                        c63.on("input", lambda _: update_live_preview())
+                        c90.on("input", lambda _: update_live_preview())
+                        c110.on("input", lambda _: update_live_preview())
+                        c150.on("input", lambda _: update_live_preview())
                         def save_daily_report():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
                             try:
