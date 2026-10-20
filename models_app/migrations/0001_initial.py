@@ -19,6 +19,7 @@ class Migration(migrations.Migration):
                 ('email', models.EmailField(max_length=254, unique=True)),
                 ('password', models.CharField(max_length=255)),
                 ('default_report_title', models.CharField(default='Veraval site daily progress report', max_length=255)),
+                ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
             ],
         ),
         migrations.CreateModel(
@@ -26,6 +27,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('area_name', models.CharField(max_length=150)),
+                ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='areas', to='models_app.appuser')),
             ],
             options={
@@ -37,6 +39,7 @@ class Migration(migrations.Migration):
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('labour_name', models.CharField(max_length=150)),
+                ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='labours', to='models_app.appuser')),
             ],
             options={
@@ -63,7 +66,12 @@ class Migration(migrations.Migration):
                 ('total_di', models.FloatField(default=0)),
                 ('total_qty', models.FloatField(default=0)),
                 ('total_mtr', models.FloatField(default=0)),
+                ('count_63mm', models.IntegerField(default=0)),
+                ('count_90mm', models.IntegerField(default=0)),
+                ('count_110mm', models.IntegerField(default=0)),
+                ('count_150mm', models.IntegerField(default=0)),
                 ('price_sum', models.FloatField(default=0.0)),
+                ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
                 ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reports', to='models_app.appuser')),
             ],
         ),
