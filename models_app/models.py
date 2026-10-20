@@ -21,6 +21,9 @@ class DailyReport(models.Model):
     qty_63mm = models.IntegerField(default=0)
     qty_90mm = models.IntegerField(default=0)
     qty_110mm = models.IntegerField(default=0)
+    qty_150mm = models.IntegerField(default=0)  # NEW - 150MM DI - Same as 63MM
+    total_pvc = models.IntegerField(default=0)  # NEW - PVC total 63+90+110
+    total_di = models.IntegerField(default=0)   # NEW - DI total
     total_qty = models.IntegerField(default=0)
     price_sum = models.FloatField(default=0.0)
 
