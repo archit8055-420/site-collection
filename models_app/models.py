@@ -5,7 +5,7 @@ class AppUser(models.Model):
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
     default_report_title = models.CharField(max_length=255, default="Site Daily Progress Report")
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
         return self.username
@@ -13,7 +13,7 @@ class AppUser(models.Model):
 class SavedArea(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="saved_areas")
     area_name = models.CharField(max_length=100)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
         unique_together = ('user', 'area_name')
@@ -24,7 +24,7 @@ class SavedArea(models.Model):
 class SavedLabour(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="saved_labours")
     labour_name = models.CharField(max_length=150)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
         unique_together = ('user', 'labour_name')
@@ -56,7 +56,7 @@ class DailyReport(models.Model):
     total_di = models.FloatField(default=0)
     total_qty = models.FloatField(default=0)
     price_sum = models.FloatField(default=0.0)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
         return f"{self.area_name} - {self.report_date}"
@@ -64,7 +64,7 @@ class DailyReport(models.Model):
 class PasswordResetToken(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="reset_tokens")
     token = models.CharField(max_length=100, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
         return f"Reset token for {self.user.email}"
