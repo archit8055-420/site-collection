@@ -25,7 +25,7 @@ class DailyReport(models.Model):
     report_date = models.DateField(default=timezone.now)
     area_name = models.CharField(max_length=150, blank=True, default="")
     labour_name = models.CharField(max_length=150, blank=True, default="")
-    qty_63mm = models.FloatField(default=0)  # CHANGED to Float for 3.2
+    qty_63mm = models.FloatField(default=0)
     qty_90mm = models.FloatField(default=0)
     qty_110mm = models.FloatField(default=0)
     qty_150mm = models.FloatField(default=0)
