@@ -559,7 +559,7 @@ def main_spa_page():
                                 try:
                                     selected_date = datetime.datetime.strptime((home_date_input.value or "").strip(), "%d-%m-%Y").date()
                                 except Exception:
-                                    selected_date = datetime.date.today()
+                                    selected_date = today_ist()
                             area_val = (area_input.value or "").strip()
                             if not area_val: ui.notify("Please Enter Area!", type="warning", position="top"); return
                             if area_val not in (CACHE["areas"].get(user.id, [])):
