@@ -647,10 +647,10 @@ def main_spa_page():
             except Exception:
                 pass
             with home_view:
-                with ui.column().classes("w-full max-w-md items-center gap-1"):
-                    with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-2 sm:p-3 border-2 border-green-200"):
+                with ui.column().classes("w-full max-w-md items-center gap-0.5"):
+                    with ui.card().classes("w-full rounded-2xl shadow-xl bg-white p-1.5 border-2 border-green-200"):
                         # COMPACT TOP BAR INSIDE BOX - Back + Date + Profile in one line - No extra space
-                        with ui.row().classes("w-full justify-between items-center mb-1.5 px-1 py-1 bg-slate-50 rounded-full border"):
+                        with ui.row().classes("w-full justify-between items-center mb-1 px-1 py-0.5 bg-slate-50 rounded-full border"):
                             ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-[11px] shadow-sm")
                             today_str = today_ist().isoformat()
                             with ui.row().classes("date-pill-compact items-center justify-center"):
@@ -663,8 +663,8 @@ def main_spa_page():
                                     with ui.menu_item(on_click=show_filter).classes("hover:bg-purple-50 font-semibold"):
                                         with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
                         
-                        with ui.row().classes("w-full justify-center mb-2.5"):
-                            title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
+                        with ui.row().classes("w-full justify-center mb-1 mt-0.5"):
+                            title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-[13px] text-slate-900'").classes("w-full px-2 py-0.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
                             def save_title_persist():
                                 try:
                                     new_title = (title_input.value or "").strip()
@@ -705,10 +705,10 @@ def main_spa_page():
                         saved_areas = get_areas()
                         saved_labours = get_labours()
                         # Area + Labour Name side by side - FIXED: No live filtering while typing
-                        with ui.row().classes("w-full mb-2.5 gap-2"):
-                            with ui.column().classes("flex-1 gap-1"):
-                                ui.label("Enter Area *").classes("text-xs font-bold text-green-700 ml-1")
-                                area_input = ui.input(placeholder="Type area name...", value="").props("outlined rounded dense color=green").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
+                        with ui.row().classes("w-full mb-1 gap-1.5"):
+                            with ui.column().classes("flex-1 gap-0.5"):
+                                ui.label("Enter Area *").classes("text-[12px] font-extrabold text-green-700 ml-1")
+                                area_input = ui.input(placeholder="Type area...", value="").props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                                 with ui.row().classes("w-full gap-1 flex-wrap") as suggestions_row:
                                     def refresh_suggestions():
                                         # FIXED: Show only saved full names, no live filtering on typing
@@ -722,12 +722,12 @@ def main_spa_page():
                                                         area_input.value = a
                                                         area_input.update()
                                                     return click
-                                                ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2 py-0")
+                                                ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[11px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2.5 py-0.5")
                                     refresh_suggestions()
                                 # NO on_value_change live filtering - Only show after save
-                            with ui.column().classes("flex-1 gap-1"):
-                                ui.label("Enter Labour Name").classes("text-xs font-bold text-blue-700 ml-1")
-                                labour_input = ui.input(placeholder="Type labour name...", value="").props("outlined rounded dense color=blue").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
+                            with ui.column().classes("flex-1 gap-0.5"):
+                                ui.label("Enter Labour Name").classes("text-[12px] font-extrabold text-blue-700 ml-1")
+                                labour_input = ui.input(placeholder="Type labour...", value="").props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                                 with ui.row().classes("w-full gap-1 flex-wrap") as labour_suggestions_row:
                                     def refresh_labour_suggestions():
                                         # FIXED: Show only saved full names after save, no live filtering
@@ -740,37 +740,37 @@ def main_spa_page():
                                                         labour_input.value = a
                                                         labour_input.update()
                                                     return click
-                                                ui.button(lab, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2 py-0")
+                                                ui.button(lab, on_click=make_click()).props("flat dense rounded").classes("text-[11px] bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2.5 py-0.5")
                                     refresh_labour_suggestions()
                                 # NO on_value_change live filtering for labour
-                        with ui.row().classes("w-full justify-center items-center gap-1.5 mb-1.5"):
-                            ui.icon("bolt", color="green", size="1.3rem"); ui.label("PipeLine Progress").classes("text-base font-extrabold text-slate-800")
+                        with ui.row().classes("w-full justify-center items-center gap-1 mb-1"):
+                            ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
-                                ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[10px]")
+                                ui.label("63MM PVC").classes("py-1.5 text-[11px]"); ui.label("90MM PVC").classes("py-1.5 text-[11px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-1.5 text-[11px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-1.5 text-[11px]")
                             with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
-                                with ui.column().classes("p-1.5 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
-                                with ui.column().classes("p-1.5 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
-                                with ui.column().classes("p-1.5 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
-                                with ui.column().classes("p-1.5 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[11px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
+                                with ui.column().classes("p-1 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full")
                             with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
-                                ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px]")
-                                ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px] border-x-2 border-indigo-900")
-                                ui.label("6MTR per PIPES").classes("py-2.5 font-extrabold text-indigo-900 text-[8px] border-r-2 border-indigo-900")
-                                ui.label("5.5MTR").classes("py-2.5 font-extrabold text-indigo-900 text-[8px]")
+                                ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px]")
+                                ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-x-2 border-indigo-900")
+                                ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-r-2 border-indigo-900")
+                                ui.label("5.5MTR").classes("py-1 font-extrabold text-indigo-900 text-[9px]")
                             # NEW ROW - Count * MTR = Total MTR - Live multiplication
                             with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
-                                m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px]")
-                                m90_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px] border-x-2 border-indigo-900")
-                                m110_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px] border-r-2 border-indigo-900")
-                                m150_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[10px]")
+                                m63_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px]")
+                                m90_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px] border-x-2 border-indigo-900")
+                                m110_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px] border-r-2 border-indigo-900")
+                                m150_lbl = ui.label("0 MTR").classes("py-1 font-extrabold text-amber-800 text-[11px]")
                             with ui.column().classes("w-full gap-0"):
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
-                                    pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-2 font-bold text-green-300 text-[11px] border-b border-white/10")
+                                    pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-1.5 font-bold text-green-300 text-[12px] border-b border-white/10")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-center"):
-                                    di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2 font-bold text-cyan-300 text-[11px]")
+                                    di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-1.5 font-bold text-cyan-300 text-[12px]")
                                 with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
-                                    mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-2 font-bold text-yellow-200 text-[11px]")
+                                    mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-1.5 font-bold text-yellow-200 text-[12px]")
                         def parse_qty(val):
                             try:
                                 if val in (None, ""):
@@ -929,7 +929,7 @@ def main_spa_page():
                                                     ui.label(f"Total: {report.total_qty} Qty").classes("text-xs font-extrabold text-emerald-600")
                                             with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
                                                 edit_btn = ui.button("Edit", icon="edit").props("dense flat").classes("edit-mini-btn px-3 py-1 bg-yellow-300 text-black font-bold border border-yellow-400")
-                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-600 text-yellow-300 font-bold border border-red-700 shadow-md")
+                                                del_btn = ui.button("Delete", icon="delete").props("dense flat").classes("del-mini-btn px-3 py-1 bg-red-500 text-white font-bold")
                                                 with ui.dialog() as edit_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"):
                                                     with ui.column().classes("w-full p-0 gap-0"):
                                                         with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-3 items-center justify-between text-white"):
