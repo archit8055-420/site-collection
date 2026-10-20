@@ -42,12 +42,11 @@ class DailyReport(models.Model):
     qty_90mm = models.FloatField(default=0)
     qty_110mm = models.FloatField(default=0)
     qty_150mm = models.FloatField(default=0)
-    # NEW: Extra MTR per pipe
+    # NEW Extra MTR feature
     extra_63mm = models.FloatField(default=0)
     extra_90mm = models.FloatField(default=0)
     extra_110mm = models.FloatField(default=0)
     extra_150mm = models.FloatField(default=0)
-    # Total MTR including extra
     total_mtr = models.FloatField(default=0)
     count_63mm = models.IntegerField(default=0)
     count_90mm = models.IntegerField(default=0)
