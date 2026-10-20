@@ -9,6 +9,11 @@ from zoneinfo import ZoneInfo
 IST = ZoneInfo("Asia/Kolkata")
 def today_ist(): return datetime.datetime.now(IST).date()
 from models_app.models import AppUser, SavedArea, DailyReport
+try:
+    from models_app.models import SavedLabour
+    HAS_LABOUR_MODEL = True
+except:
+    HAS_LABOUR_MODEL = False
 from django.db import connection
 
 def ensure_neon_fast():
@@ -71,7 +76,7 @@ def generate_single_csv(report):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([report.report_title])
-    writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}"])
+    writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}", f"Labour: {get_q(report, 'labour_name', '')}"])
     writer.writerow([])
     writer.writerow(["PVC PIPES"])
     writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Total MTR"])
@@ -127,7 +132,8 @@ def generate_single_pdf(report):
         c.setFont("Helvetica-Bold", 16)
         c.drawCentredString(width/2, height-40, report.report_title)
         c.setFont("Helvetica", 11)
-        c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'}")
+        c.setFillColor(colors.black)
+        c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'} | Labour: {get_q(report,'labour_name','') or 'No Labour'}")
         c.drawCentredString(width/2, height-75, f"Date: {report.report_date.strftime('%d-%m-%Y')}")
         y = height - 110
         # PVC PIPES - Center - RED COLOR + Space
@@ -526,29 +532,84 @@ def main_spa_page():
                             areas = list(SavedArea.objects.filter(user=user).values_list("area_name", flat=True)[:100])
                             CACHE["areas"][user.id] = areas
                             return areas
+                        def get_labours():
+                            if "labours" not in CACHE:
+                                CACHE["labours"] = {}
+                            if user.id in CACHE["labours"]:
+                                return CACHE["labours"][user.id]
+                            if HAS_LABOUR_MODEL:
+                                try:
+                                    labours = list(SavedLabour.objects.filter(user=user).values_list("labour_name", flat=True)[:100])
+                                except:
+                                    labours = []
+                            else:
+                                labours = []
+                            CACHE["labours"][user.id] = labours
+                            return labours
                         saved_areas = get_areas()
-                        with ui.column().classes("w-full mb-2.5 gap-1"):
-                            ui.label("Enter Area *").classes("text-xs font-bold text-green-700 ml-1")
-                            area_input = ui.input(placeholder="Type area name...", value="").props("outlined rounded dense color=green").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
-                            with ui.row().classes("w-full gap-1 flex-wrap") as suggestions_row:
-                                def refresh_suggestions():
-                                    suggestions_row.clear()
-                                    with suggestions_row:
-                                        for area in saved_areas[:8]:
-                                            def make_click(a=area):
-                                                def click():
-                                                    area_input.value = a
-                                                    area_input.update()
-                                                return click
-                                            ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2 py-0")
-                                refresh_suggestions()
-                            def on_area_save(e):
-                                val = (e.value or "").strip() if hasattr(e, 'value') else (area_input.value or "").strip()
-                                if val and val not in saved_areas:
-                                    SavedArea.objects.get_or_create(user=user, area_name=val)
-                                    CACHE["areas"].pop(user.id, None)
+                        saved_labours = get_labours()
+                        # Area + Labour Name side by side
+                        with ui.row().classes("w-full mb-2.5 gap-2"):
+                            with ui.column().classes("flex-1 gap-1"):
+                                ui.label("Enter Area *").classes("text-xs font-bold text-green-700 ml-1")
+                                area_input = ui.input(placeholder="Type area name...", value="").props("outlined rounded dense color=green").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
+                                with ui.row().classes("w-full gap-1 flex-wrap") as suggestions_row:
+                                    def refresh_suggestions():
+                                        # Filter based on current input - show matching full names only, not K, Ka, Kam
+                                        cur = (area_input.value or "").strip().lower()
+                                        suggestions_row.clear()
+                                        with suggestions_row:
+                                            if cur:
+                                                filtered = [a for a in saved_areas if cur in a.lower()][:8]
+                                            else:
+                                                filtered = saved_areas[:8]
+                                            for area in filtered:
+                                                def make_click(a=area):
+                                                    def click():
+                                                        area_input.value = a
+                                                        area_input.update()
+                                                    return click
+                                                ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2 py-0")
                                     refresh_suggestions()
-                            area_input.on_value_change(on_area_save)
+                                def on_area_save(e):
+                                    val = (e.value or "").strip() if hasattr(e, 'value') else (area_input.value or "").strip()
+                                    refresh_suggestions()
+                                    if val and val not in saved_areas:
+                                        SavedArea.objects.get_or_create(user=user, area_name=val)
+                                        CACHE["areas"].pop(user.id, None)
+                                area_input.on_value_change(on_area_save)
+                            with ui.column().classes("flex-1 gap-1"):
+                                ui.label("Enter Labour Name").classes("text-xs font-bold text-blue-700 ml-1")
+                                labour_input = ui.input(placeholder="Type labour name...", value="").props("outlined rounded dense color=blue").classes("editable-area w-full bg-white font-bold text-sm shadow-sm")
+                                with ui.row().classes("w-full gap-1 flex-wrap") as labour_suggestions_row:
+                                    def refresh_labour_suggestions():
+                                        cur = (labour_input.value or "").strip().lower()
+                                        labour_suggestions_row.clear()
+                                        with labour_suggestions_row:
+                                            if cur:
+                                                filtered = [a for a in saved_labours if cur in a.lower()][:8]
+                                            else:
+                                                filtered = saved_labours[:8]
+                                            for lab in filtered:
+                                                def make_click(a=lab):
+                                                    def click():
+                                                        labour_input.value = a
+                                                        labour_input.update()
+                                                    return click
+                                                ui.button(lab, on_click=make_click()).props("flat dense rounded").classes("text-[10px] bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2 py-0")
+                                    refresh_labour_suggestions()
+                                def on_labour_save(e):
+                                    val = (e.value or "").strip() if hasattr(e, 'value') else (labour_input.value or "").strip()
+                                    refresh_labour_suggestions()
+                                    if val and val not in saved_labours:
+                                        if HAS_LABOUR_MODEL:
+                                            try:
+                                                SavedLabour.objects.get_or_create(user=user, labour_name=val)
+                                            except:
+                                                pass
+                                        if "labours" in CACHE and user.id in CACHE["labours"]:
+                                            CACHE["labours"].pop(user.id, None)
+                                labour_input.on_value_change(on_labour_save)
                         with ui.row().classes("w-full justify-center items-center gap-1.5 mb-1.5"):
                             ui.icon("bolt", color="green", size="1.3rem"); ui.label("4-PIPE PVC+DI").classes("text-base font-extrabold text-slate-800")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
@@ -646,23 +707,35 @@ def main_spa_page():
                             except Exception:
                                 selected_date = today_ist()
                             area_val = (area_input.value or "").strip()
+                            labour_val = (labour_input.value or "").strip()
                             if not area_val: ui.notify("Please Enter Area!", type="warning", position="top"); return
                             if area_val not in (CACHE["areas"].get(user.id, [])):
                                 SavedArea.objects.get_or_create(user=user, area_name=area_val)
                                 CACHE["areas"].pop(user.id, None)
+                            if labour_val:
+                                if HAS_LABOUR_MODEL:
+                                    try:
+                                        SavedLabour.objects.get_or_create(user=user, labour_name=labour_val)
+                                    except:
+                                        pass
+                                if "labours" in CACHE and user.id in CACHE["labours"]:
+                                    CACHE["labours"].pop(user.id, None)
                             current_title = (title_input.value or "").strip() or user.default_report_title
                             if current_title != user.default_report_title:
                                 user.default_report_title = current_title
                                 user.save(update_fields=['default_report_title'])
                                 CACHE["users"][user.email] = user
                             try:
-                                DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                                DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
                             except Exception as ex:
-                                print(f"Save with 150 failed: {ex}, trying old")
-                                DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
-                            c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; area_input.value = ""; update_live_preview()
-                            get_areas(); refresh_suggestions()
-                            ui.notify(f"Saved! PVC:{q63+q90+q110} DI:{q150} Total:{q63+q90+q110+q150}", type="positive", position="top")
+                                print(f"Save with labour failed: {ex}, trying without labour")
+                                try:
+                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                                except Exception as ex2:
+                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, total_qty=q63+q90+q110+q150, price_sum=float(q63+q90+q110+q150))
+                            c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; area_input.value = ""; labour_input.value = ""; update_live_preview()
+                            get_areas(); get_labours(); refresh_suggestions(); refresh_labour_suggestions()
+                            ui.notify(f"Saved! Area:{area_val} Labour:{labour_val} PVC:{q63+q90+q110} DI:{q150}", type="positive", position="top")
                         ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
 
         def build_filter():
@@ -735,6 +808,8 @@ def main_spa_page():
                                                             e_date = ui.input(value=report.report_date.isoformat()).props("type=date outlined dense").classes("w-full")
                                                             ui.label("Area Name").classes("text-xs font-bold text-slate-700")
                                                             e_area = ui.input(value=report.area_name).props("outlined dense").classes("w-full font-bold")
+                                                            ui.label("Labour Name").classes("text-xs font-bold text-slate-700")
+                                                            e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
                                                             ui.label("Report Title").classes("text-xs font-bold text-slate-700")
                                                             e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
                                                             with ui.grid(columns=4).classes("w-full gap-2"):
@@ -753,7 +828,7 @@ def main_spa_page():
                                                             with ui.row().classes("w-full justify-between gap-3 mt-2"):
                                                                 ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
                                                                 save_edit_btn = ui.button("OK", icon="check").props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
-                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, dlg=edit_dialog):
+                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, dlg=edit_dialog):
                                                                 def do_save():
                                                                     try:
                                                                         try:
@@ -761,6 +836,7 @@ def main_spa_page():
                                                                         except:
                                                                             new_date = rpt.report_date
                                                                         new_area = (ea.value or "").strip() or rpt.area_name
+                                                                        new_labour = (el.value or "").strip() or get_q(rpt,'labour_name','')
                                                                         new_title = (et.value or "").strip() or rpt.report_title
                                                                         def pq(v):
                                                                             try: return int(float(v)) if v not in (None, "") else 0
@@ -768,6 +844,10 @@ def main_spa_page():
                                                                         q63 = pq(e63.value); q90 = pq(e90.value); q110 = pq(e110.value); q150 = pq(e150.value)
                                                                         rpt.report_date = new_date
                                                                         rpt.area_name = new_area
+                                                                        try:
+                                                                            rpt.labour_name = new_labour
+                                                                        except:
+                                                                            pass
                                                                         rpt.report_title = new_title
                                                                         rpt.qty_63mm = q63; rpt.qty_90mm = q90; rpt.qty_110mm = q110
                                                                         try: rpt.qty_150mm = q150
@@ -791,7 +871,7 @@ def main_spa_page():
                                                             ui.icon("warning", size="1.5rem"); ui.label("Delete?").classes("font-extrabold text-sm text-white")
                                                         with ui.column().classes("w-full p-5 gap-3 bg-white"):
                                                             ui.label("This report will be permanently deleted!").classes("text-sm font-bold")
-                                                            ui.label(f"Area: {report.area_name} | Date: {report.report_date.strftime('%d-%m-%Y')} | Total: {report.total_qty} Qty").classes("text-xs text-slate-600")
+                                                            ui.label(f"Area: {report.area_name} | Labour: {get_q(report,'labour_name','') or 'No Labour'} | Date: {report.report_date.strftime('%d-%m-%Y')} | Total: {report.total_qty} Qty").classes("text-xs text-slate-600")
                                                             with ui.row().classes("w-full justify-between gap-3 mt-2"):
                                                                 ui.button("Cancel", icon="close", on_click=del_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
                                                                 confirm_del_btn = ui.button("Delete", icon="delete_forever").props("rounded").classes("flex-1 bg-red-600 text-white font-bold")
@@ -851,8 +931,11 @@ def main_spa_page():
                             ui.button("Back", icon="arrow_back", on_click=show_filter).props("flat rounded no-caps dense").classes("back-btn text-xs")
                             ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="green").classes("font-bold text-xs")
                         with ui.column().classes("w-full rounded-2xl bg-gradient-to-r from-green-200 via-emerald-200 to-teal-200 p-3 border-2 border-green-300 shadow-md mb-3"):
-                            with ui.row().classes("w-full items-center gap-2"):
-                                ui.icon("location_on", color="green"); ui.label(report.area_name or "No Area").classes("font-extrabold text-base text-green-900")
+                            with ui.column().classes("w-full gap-1"):
+                                with ui.row().classes("w-full items-center gap-2"):
+                                    ui.icon("location_on", color="green"); ui.label(f"Area: {report.area_name or 'No Area'}").classes("font-extrabold text-base text-green-900")
+                                with ui.row().classes("w-full items-center gap-2"):
+                                    ui.icon("engineering", color="blue"); ui.label(f"Labour: {get_q(report,'labour_name','') or 'No Labour'}").classes("font-bold text-sm text-blue-900")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0 mb-4"):
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
                                 ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x border-white/30"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r border-white/30"); ui.label("150MM DI").classes("py-2 text-[10px]")
@@ -872,6 +955,7 @@ def main_spa_page():
                         with ui.column().classes("w-full bg-gray-50 rounded-xl p-3 border border-gray-200 mb-3"):
                             ui.label(f"📅 Date: {report.report_date.strftime('%d-%m-%Y')}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"📍 Area: {report.area_name}").classes("text-xs font-bold text-slate-700")
+                            ui.label(f"👷 Labour: {get_q(report,'labour_name','') or 'No Labour'}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"📄 Title: {report.report_title}").classes("text-xs font-bold text-slate-700")
                         with ui.dialog() as detail_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                             with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
