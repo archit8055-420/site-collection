@@ -523,45 +523,64 @@ def main_spa_page():
                     with ui.column().classes("w-full p-5 bg-white gap-3"):
                         forgot_email = ui.input("Email ID", placeholder="Enter registered Email").props("outlined rounded dense").classes("w-full")
                         forgot_status = ui.label("").classes("text-xs font-bold text-center w-full")
-                        def send_reset_link():
+                        async def send_reset_link():
                             email = (forgot_email.value or "").strip()
                             if not email:
                                 forgot_status.set_text("❌ Enter Email ID!")
                                 return
                             try:
-                                user = AppUser.objects.get(email=email)
-                            except AppUser.DoesNotExist:
-                                forgot_status.set_text("❌ Email not registered!")
+                                def get_user():
+                                    try:
+                                        return AppUser.objects.get(email=email)
+                                    except AppUser.DoesNotExist:
+                                        return None
+                                user = await run.io_bound(get_user)
+                                if not user:
+                                    forgot_status.set_text("❌ Email not registered!")
+                                    return
+                            except Exception as e:
+                                forgot_status.set_text(f"❌ DB Error: {e}")
                                 return
                             token = secrets.token_urlsafe(32)
                             if HAS_TOKEN_MODEL:
-                                PasswordResetToken.objects.filter(user=user).delete()
-                                PasswordResetToken.objects.create(user=user, token=token)
+                                try:
+                                    def create_token():
+                                        PasswordResetToken.objects.filter(user=user).delete()
+                                        PasswordResetToken.objects.create(user=user, token=token)
+                                    await run.io_bound(create_token)
+                                except Exception as ex:
+                                    print(f"Token create fail: {ex}")
                             base_url = os.getenv("RENDER_EXTERNAL_URL", os.getenv("BASE_URL", "https://site-collection.onrender.com"))
                             if "localhost" in base_url or not base_url:
                                 base_url = "https://site-collection.onrender.com"
                             reset_link = f"{base_url}/reset/{token}"
-                            forgot_status.set_text(f"⏳ Sending mail to {email}...")
-                            success, msg = send_reset_email_resend_http(email, user.username, reset_link)
+                            forgot_status.set_text(f"⏳ Sending mail to {email}... (Gmail FREE)")
+                            try:
+                                # Run email in background thread - no blocking UI
+                                success, msg = await run.io_bound(lambda: send_reset_email_resend_http(email, user.username, reset_link))
+                            except Exception as e:
+                                success, msg = False, f"Exception: {e}"
                             if success:
-                                forgot_status.set_text(f"✅ Mail sent to {email}!")
-                                ui.notify(f"✅ Mail sent to {email}", type="positive", position="top")
+                                forgot_status.set_text(f"✅ Mail sent to {email}! Check inbox & spam")
+                                ui.notify(f"✅ Mail sent to {email} via Gmail FREE", type="positive", position="top")
                             else:
                                 if "FREE_LIMIT" in msg:
-                                    forgot_status.set_text(f"⚠️ {msg}")
+                                    forgot_status.set_text(f"✅ Link ready (FREE): {reset_link}")
                                     print(f"FREE LIMIT Link: {reset_link}", flush=True)
                                     try:
                                         with ui.dialog() as dlg, ui.card().classes("p-4 rounded-xl max-w-md"):
-                                            ui.label("FREE Limit - Onboarding").classes("font-bold text-red-600")
-                                            ui.label(msg).classes("text-xs mt-2 break-words")
-                                            ui.label(f"Your link (15 min): {reset_link}").classes("text-xs break-all text-blue-600 mt-2")
-                                            ui.button("Open Reset Link", on_click=lambda: ui.navigate.to(reset_link)).props("rounded").classes("bg-blue-600 text-white w-full mt-3")
+                                            ui.label("✅ Reset Link Ready!").classes("font-bold text-green-600")
+                                            ui.label(f"FREE method: Link for {email} (15 min valid)").classes("text-xs mt-2")
+                                            ui.label(reset_link).classes("text-xs break-all text-blue-600 mt-2 border p-2 rounded bg-blue-50")
+                                            ui.button("Open Reset Link", icon="open_in_new", on_click=lambda: ui.navigate.to(reset_link)).props("rounded").classes("bg-blue-600 text-white w-full mt-3")
+                                            ui.button("Copy Link", on_click=lambda: ui.clipboard.write(reset_link)).props("outline rounded").classes("w-full mt-1")
                                             ui.button("Close", on_click=dlg.close).props("flat").classes("w-full")
                                         dlg.open()
-                                    except:
-                                        pass
+                                    except Exception as ex:
+                                        print(f"Dialog fail: {ex}")
                                 else:
                                     forgot_status.set_text(f"❌ {msg}")
+                                    print(f"Email fail: {msg}", flush=True)
                         ui.button("Send Reset Link - FREE", icon="send", on_click=send_reset_link).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg")
                         ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
 
