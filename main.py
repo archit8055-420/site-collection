@@ -533,20 +533,23 @@ def main_spa_page():
                     with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white/95 p-3 sm:p-5 border-2 border-green-200"):
                         with ui.row().classes("w-full justify-center mb-2.5"):
                             title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-slate-900'").classes("w-full px-2 py-1 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
-                            def save_title_persist(e):
+                            def save_title_persist():
                                 try:
-                                    new_title = (e.value if hasattr(e, 'value') else title_input.value or "").strip()
+                                    new_title = (title_input.value or "").strip()
                                     if not new_title:
-                                        new_title = "Veraval site"
+                                        return
                                     if new_title == user.default_report_title:
                                         return
                                     user.default_report_title = new_title
                                     user.save(update_fields=['default_report_title'])
                                     CACHE["users"][user.email] = user
                                     state["user"] = user
-                                except Exception:
-                                    pass
-                            title_input.on_value_change(save_title_persist)
+                                    ui.notify(f"Title saved: {new_title}", type="positive", position="top")
+                                except Exception as ex:
+                                    print(f"Title save fail: {ex}")
+                            # FIXED: Only save on blur or Enter, not on every keystroke - no page reload
+                            title_input.on("blur", lambda _: save_title_persist())
+                            title_input.on("keydown.enter", lambda _: save_title_persist())
                         def get_areas():
                             if user.id in CACHE["areas"]:
                                 return CACHE["areas"][user.id]
