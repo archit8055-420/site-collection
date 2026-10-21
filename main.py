@@ -988,7 +988,9 @@ def main_spa_page():
                         # Fixed Pipe MTR - by default 6,6,6,5.5 as requested
                         pipe_mtr_state = {"63": 6.0, "90": 6.0, "110": 6.0, "150": 5.5}
                         
-                        with ui.row().classes("w-full justify-center items-center gap-3 mb-1"):
+                        with ui.row().classes("w-full justify-between items-center gap-2 mb-1"):
+                            # Left: PIPE MTR LOGIC Button
+                            pipe_logic_btn = ui.button("PIPE MTR LOGIC", icon="info").props("dense rounded outline color=purple").classes("text-[10px] font-bold px-2 py-1 border-purple-300")
                             # Center: Pipeline Progress - centered
                             with ui.row().classes("items-center gap-1"):
                                 ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800 text-center")
@@ -996,6 +998,37 @@ def main_spa_page():
                             with ui.column().classes("gap-0"):
                                 ui.label("Connection").classes("text-[10px] font-bold text-orange-700 ml-1")
                                 connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-28 bg-orange-50 font-bold text-[12px] shadow-sm border border-orange-200")
+                        
+                        # Dialog for PIPE MTR LOGIC - View only
+                        with ui.dialog() as pipe_logic_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
+                            with ui.column().classes("w-full p-0 gap-0"):
+                                with ui.row().classes("w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-3 items-center justify-between text-white"):
+                                    ui.label("📏 PIPE MTR LOGIC").classes("font-extrabold text-[13px] text-white")
+                                    ui.button(icon="close", on_click=pipe_logic_dialog.close).props("flat round dense color=white").classes("text-white")
+                                with ui.column().classes("w-full p-3 gap-2 bg-white"):
+                                    ui.label("Per Pipe MTR Details - View Only").classes("text-[11px] font-bold text-purple-700 text-center w-full bg-purple-50 px-2 py-1 rounded-full")
+                                    with ui.column().classes("w-full rounded-xl overflow-hidden border-2 border-indigo-900 shadow-md mt-1"):
+                                        # Header - 63MM, 90MM, 110MM, 150MM
+                                        with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-extrabold text-center"):
+                                            ui.label("63MM").classes("py-2 text-[11px]"); ui.label("90MM").classes("py-2 text-[11px] border-x border-white/30"); ui.label("110MM").classes("py-2 text-[11px] border-r border-white/30"); ui.label("150MM").classes("py-2 text-[11px]")
+                                        # Label - per pipe MTR - center ma badha textview ni upar
+                                        with ui.grid(columns=4).classes("w-full bg-slate-100 text-center border-y border-indigo-900"):
+                                            ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600"); ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600 border-x border-gray-300"); ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600 border-r border-gray-300"); ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600")
+                                        # Values - 6MTR etc - individual MTR lakhvana textview ma
+                                        with ui.grid(columns=4).classes("w-full bg-white text-center"):
+                                            with ui.column().classes("w-full p-1"):
+                                                ui.input(value="6MTR").props("outlined dense readonly input-class='text-center font-extrabold text-[13px]'").classes("w-full bg-green-50")
+                                            with ui.column().classes("w-full p-1 border-x border-gray-200"):
+                                                ui.input(value="6MTR").props("outlined dense readonly input-class='text-center font-extrabold text-[13px]'").classes("w-full bg-green-50")
+                                            with ui.column().classes("w-full p-1 border-r border-gray-200"):
+                                                ui.input(value="6MTR").props("outlined dense readonly input-class='text-center font-extrabold text-[13px]'").classes("w-full bg-green-50")
+                                            with ui.column().classes("w-full p-1"):
+                                                ui.input(value="5.5MTR").props("outlined dense readonly input-class='text-center font-extrabold text-[13px]'").classes("w-full bg-purple-50")
+                                    with ui.column().classes("w-full bg-amber-50 rounded-xl p-2 border border-amber-200 mt-2"):
+                                        ui.label("Logic: Total MTR = Count × Per Pipe MTR + Extra MTR").classes("text-[10px] font-bold text-amber-800 text-center w-full")
+                                        ui.label("Example: 63MM Count 5 × 6MTR = 30MTR").classes("text-[9px] font-bold text-slate-600 text-center w-full mt-1")
+                                    ui.button("Close", icon="close", on_click=pipe_logic_dialog.close).props("rounded").classes("w-full mt-2 bg-slate-100 text-slate-700 font-bold text-[12px]")
+                        pipe_logic_btn.on_click(pipe_logic_dialog.open)
 
                         # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
