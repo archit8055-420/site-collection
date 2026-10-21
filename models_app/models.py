@@ -5,6 +5,8 @@ class AppUser(models.Model):
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
     default_report_title = models.CharField(max_length=255, default="Site Daily Progress Report")
+    default_area_name = models.CharField(max_length=255, default="", blank=True)
+    default_labour_name = models.CharField(max_length=255, default="", blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
