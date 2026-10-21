@@ -8,6 +8,11 @@ class AppUser(models.Model):
     default_area_name = models.CharField(max_length=255, default="", blank=True)
     default_labour_name = models.CharField(max_length=255, default="", blank=True)
     default_connection = models.CharField(max_length=100, default="", blank=True)
+    # Per pipe MTR - permanent, user can change, stays forever
+    mtr_63mm = models.FloatField(default=6.0)
+    mtr_90mm = models.FloatField(default=6.0)
+    mtr_110mm = models.FloatField(default=6.0)
+    mtr_150mm = models.FloatField(default=5.5)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
