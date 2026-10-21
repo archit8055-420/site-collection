@@ -1,3 +1,4 @@
+
 import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
 print("🚀 FINAL VERAVAL TRACKER Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -14,11 +15,15 @@ try:
     HAS_LABOUR_MODEL = True
 except:
     HAS_LABOUR_MODEL = False
-from django.db import connection
+from django.db import connection, close_old_connections
 
 def ensure_neon_fast():
-    # SAFE VERSION - Works for both Postgres (Neon) and SQLite (Local)
+    # SAFE VERSION - Works for both Postgres (Neon) and SQLite (Local) - Handles closed connection
     try:
+        try:
+            close_old_connections()
+        except:
+            pass
         with connection.cursor() as cursor:
             # Check if tables exist - Compatible with both DBs
             try:
@@ -667,12 +672,25 @@ def main_spa_page():
                             try:
                                 def update_pwd():
                                     try:
+                                        close_old_connections()
+                                    except:
+                                        pass
+                                    try:
                                         u = AppUser.objects.get(email=email)
                                     except AppUser.DoesNotExist:
                                         try:
                                             u = AppUser.objects.get(username=email)
                                         except AppUser.DoesNotExist:
                                             return None
+                                    except Exception as db_err:
+                                        if "closed" in str(db_err).lower():
+                                            close_old_connections()
+                                            try:
+                                                u = AppUser.objects.get(email=email)
+                                            except:
+                                                u = AppUser.objects.get(username=email)
+                                        else:
+                                            raise db_err
                                     u.password = make_password(p1)
                                     u.save(update_fields=['password'])
                                     return u
@@ -694,7 +712,38 @@ def main_spa_page():
                                 await asyncio.sleep(1.2)
                                 show_login()
                             except Exception as e:
+                                err = str(e).lower()
+                                if "closed" in err:
+                                    reset_status_label.set_text("⏳ Connection closed, retrying...")
+                                    try:
+                                        close_old_connections()
+                                        await asyncio.sleep(0.3)
+                                        def retry_pwd():
+                                            close_old_connections()
+                                            try:
+                                                u = AppUser.objects.get(email=email)
+                                            except:
+                                                u = AppUser.objects.get(username=email)
+                                            u.password = make_password(p1)
+                                            u.save(update_fields=['password'])
+                                            return u
+                                        user = await run.io_bound(retry_pwd)
+                                        CACHE["users"].pop(email, None)
+                                        CACHE["users"][user.email] = user
+                                        pwd_key = hashlib.sha256(f"{user.email}:{p1}".encode()).hexdigest()
+                                        CACHE["pwd_verified"][pwd_key] = user.id
+                                        app.storage.user["saved_email"] = user.email
+                                        app.storage.user["saved_password"] = p1
+                                        reset_status_label.set_text("✅ Password changed! Going to login...")
+                                        ui.notify("✅ Password changed!", type="positive")
+                                        await asyncio.sleep(1.2)
+                                        show_login()
+                                        return
+                                    except Exception as e2:
+                                        reset_status_label.set_text(f"❌ Retry failed: {e2}")
+                                        return
                                 reset_status_label.set_text(f"❌ Error: {e}")
+                                print(f"Reset error: {e}")
 
                         async def verify_id():
                             email = (forgot_email.value or "").strip()
@@ -705,12 +754,28 @@ def main_spa_page():
                             try:
                                 def get_user():
                                     try:
+                                        close_old_connections()
+                                    except:
+                                        pass
+                                    try:
                                         return AppUser.objects.get(email=email)
                                     except AppUser.DoesNotExist:
                                         try:
                                             return AppUser.objects.get(username=email)
                                         except AppUser.DoesNotExist:
                                             return None
+                                    except Exception as db_err:
+                                        # Handle closed connection - retry once
+                                        if "closed" in str(db_err).lower() or "connection" in str(db_err).lower():
+                                            try:
+                                                close_old_connections()
+                                                try:
+                                                    return AppUser.objects.get(email=email)
+                                                except:
+                                                    return AppUser.objects.get(username=email)
+                                            except:
+                                                raise db_err
+                                        raise db_err
                                 user = await run.io_bound(get_user)
                                 if not user:
                                     forgot_status.set_text("❌ ID not registered! Check Email/Username")
@@ -726,7 +791,42 @@ def main_spa_page():
                                     reset_status_label = ui.label("").classes("text-xs font-bold text-center w-full")
                                     ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=lambda: do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, email)).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg mt-1")
                             except Exception as e:
+                                err_msg = str(e)
+                                if "closed" in err_msg.lower() or "connection" in err_msg.lower():
+                                    forgot_status.set_text("⏳ Connection reset, retrying...")
+                                    try:
+                                        close_old_connections()
+                                        await asyncio.sleep(0.5)
+                                        # Retry once
+                                        def get_user_retry():
+                                            try:
+                                                close_old_connections()
+                                            except:
+                                                pass
+                                            try:
+                                                return AppUser.objects.get(email=email)
+                                            except:
+                                                try:
+                                                    return AppUser.objects.get(username=email)
+                                                except:
+                                                    return None
+                                        user = await run.io_bound(get_user_retry)
+                                        if user:
+                                            forgot_status.set_text(f"✅ Found: {user.username} ({user.email})")
+                                            reset_area.clear()
+                                            with reset_area:
+                                                ui.separator().classes("my-2")
+                                                ui.label("✅ ID Verified! New password nakho:").classes("text-[13px] font-extrabold text-green-700 bg-green-50 px-3 py-1.5 rounded-full text-center w-full")
+                                                new_pwd_input = ui.input("New Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full font-bold")
+                                                re_new_pwd_input = ui.input("Retype Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full font-bold")
+                                                reset_status_label = ui.label("").classes("text-xs font-bold text-center w-full")
+                                                ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=lambda: do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, email)).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg mt-1")
+                                            return
+                                    except Exception as e2:
+                                        forgot_status.set_text(f"❌ Retry failed: {e2}")
+                                        return
                                 forgot_status.set_text(f"❌ Error: {e}")
+                                print(f"Forgot verify error: {e}")
                         
                         ui.button("Verify ID & Reset Direct", icon="verified_user", on_click=verify_id).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg mt-2")
                         ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
