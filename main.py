@@ -60,6 +60,10 @@ def ensure_neon_fast():
                     "ALTER TABLE models_app_appuser ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;",
                     "ALTER TABLE models_app_savedarea ADD COLUMN created_at DATETIME DEFAULT CURRENT_TIMESTAMP;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN labour_name VARCHAR(150) DEFAULT '';",
+                    "ALTER TABLE models_app_dailyreport ADD COLUMN connection VARCHAR(100) DEFAULT '';",
+                    "ALTER TABLE models_app_appuser ADD COLUMN default_area_name VARCHAR(255) DEFAULT '';",
+                    "ALTER TABLE models_app_appuser ADD COLUMN default_labour_name VARCHAR(255) DEFAULT '';",
+                    "ALTER TABLE models_app_appuser ADD COLUMN default_connection VARCHAR(100) DEFAULT '';",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN qty_150mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_pvc REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_di REAL DEFAULT 0;",
@@ -99,8 +103,14 @@ def ensure_neon_fast():
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_report_title VARCHAR(255) DEFAULT 'Veraval site';")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
                 # SavedArea
                 cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 # SavedLabour
@@ -165,7 +175,8 @@ def generate_single_csv(report):
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow([report.report_title])
-    writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}", f"Labour: {get_q(report, 'labour_name', '')}"])
+    conn = get_q(report, 'connection', '')
+    writer.writerow([f"Date: {report.report_date.strftime('%d-%m-%Y')}", f"Area: {report.area_name}", f"Labour: {get_q(report, 'labour_name', '')}", f"Connection: {conn}"])
     writer.writerow([])
     ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
     writer.writerow(["PVC PIPES"])
@@ -200,7 +211,7 @@ def generate_single_excel(report):
         hdr_font = Font(bold=True, color="FFFFFF", size=11)
         ex63 = get_q(report,'extra_63mm',0); ex90 = get_q(report,'extra_90mm',0); ex110 = get_q(report,'extra_110mm',0); ex150 = get_q(report,'extra_150mm',0)
         ws.merge_cells('A1:G1'); ws['A1'] = report.report_title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
-        ws.merge_cells('A2:G2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name} | Labour: {get_q(report,'labour_name','')}"; ws['A2'].alignment = Alignment(horizontal='center')
+        ws.merge_cells('A2:G2'); ws['A2'] = f"Date: {report.report_date.strftime('%d-%m-%Y')} | Area: {report.area_name} | Labour: {get_q(report,'labour_name','')} | Connection: {get_q(report,'connection','')}"; ws['A2'].alignment = Alignment(horizontal='center')
         ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT", "Pipe MTR", "Extra MTR", "Total MTR"])
         r = ws.max_row
         for col in range(1,8): cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
@@ -242,7 +253,8 @@ def generate_single_pdf(report):
         c.drawCentredString(width/2, height-40, report.report_title)
         c.setFont("Helvetica", 11)
         c.setFillColor(colors.black)
-        c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'} | Labour: {get_q(report,'labour_name','') or 'No Labour'}")
+        conn = get_q(report, 'connection', '')
+        c.drawCentredString(width/2, height-60, f"Area: {report.area_name or 'No Area'} | Labour: {get_q(report,'labour_name','') or 'No Labour'} | Connection: {conn or '-'}")
         c.drawCentredString(width/2, height-75, f"Date: {report.report_date.strftime('%d-%m-%Y')}")
         y = height - 110
         # Extra values
@@ -308,11 +320,24 @@ def generate_single_pdf(report):
         c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 10)
         c.drawString(35, y+2, f"DI Total: {di_qty} Qty | Pipe:{di_mtr} + Extra:{ex150} = {di_total} MTR")
         y -= 25
+        # Connection info
+        conn_val = get_q(report, 'connection', '')
+        if conn_val:
+            y -= 8
+            c.setFillColor(colors.HexColor("#FEF3C7")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
+            c.setFillColor(colors.HexColor("#92400E")); c.setFont("Helvetica-Bold", 11)
+            c.drawString(35, y+2, f"Connection: {conn_val} - Total Connections: {conn_val}")
         # Grand total MTR
         grand_mtr = total_mtr_field if total_mtr_field>0 else (pvc_mtr_total+pvc_extra_total+di_total)
         c.setFillColor(colors.HexColor("#1F2937")); c.rect(30, y-5, 540, 25, fill=1, stroke=0)
         c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 12)
         c.drawCentredString(width/2, y+2, f"GRAND TOTAL MTR: {grand_mtr} MTR")
+        # Connection summary footer
+        if conn_val:
+            y -= 30
+            c.setFillColor(colors.HexColor("#F59E0B")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
+            c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11)
+            c.drawCentredString(width/2, y+2, f"Total Connections in this report: {conn_val}")
         c.showPage(); c.save(); return output.getvalue()
     except Exception as e:
         print(f"PDF error: {e}")
@@ -851,27 +876,13 @@ def main_spa_page():
                                 labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                                 labour_input.on("blur", lambda _: save_default_labour())
                                 labour_input.on("keydown.enter", lambda _: save_default_labour())
-                        with ui.row().classes("w-full justify-between items-center gap-2 mb-1"):
+                        with ui.row().classes("w-full justify-center items-center gap-3 mb-1"):
                             with ui.row().classes("items-center gap-1"):
-                                ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
-                            # Connection edit text - user requested
+                                ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800 text-center")
+                            # Connection - centered layout, each time different, clear after save
                             with ui.column().classes("gap-0"):
-                                ui.label("Connection").classes("text-[10px] font-bold text-slate-600 ml-1")
-                                connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-32 bg-white font-bold text-[12px] shadow-sm")
-                                # Persist connection like area/labour if needed
-                                try:
-                                    conn_saved = app.storage.user.get("default_connection", "")
-                                    if conn_saved:
-                                        connection_input.value = conn_saved
-                                except:
-                                    pass
-                                def save_conn():
-                                    try:
-                                        app.storage.user["default_connection"] = (connection_input.value or "").strip()
-                                    except:
-                                        pass
-                                connection_input.on("blur", lambda _: save_conn())
-                                connection_input.on("keydown.enter", lambda _: save_conn())
+                                ui.label("Connection").classes("text-[10px] font-bold text-orange-700 ml-1")
+                                connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-28 bg-orange-50 font-bold text-[12px] shadow-sm border border-orange-200")
                         # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
                         
@@ -1072,10 +1083,8 @@ def main_spa_page():
                             conn_val = ""
                             try:
                                 conn_val = (connection_input.value or "").strip()
-                                if conn_val:
-                                    app.storage.user["default_connection"] = conn_val
                             except:
-                                pass
+                                conn_val = ""
                             if not area_val: ui.notify("Please Enter Area!", type="warning", position="top"); return
                             if area_val not in (CACHE["areas"].get(user.id, [])):
                                 SavedArea.objects.get_or_create(user=user, area_name=area_val)
@@ -1098,7 +1107,7 @@ def main_spa_page():
                             try:
                                 DailyReport.objects.create(
                                     user=user, report_title=current_title, report_date=selected_date, 
-                                    area_name=area_val, labour_name=labour_val, 
+                                    area_name=area_val, labour_name=labour_val, connection=conn_val, 
                                     qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150,
                                     extra_63mm=ex63, extra_90mm=ex90, extra_110mm=ex110, extra_150mm=ex150,
                                     total_mtr=total_mtr_calc,
@@ -1108,12 +1117,17 @@ def main_spa_page():
                             except Exception as ex:
                                 print(f"Save with extra failed: {ex}")
                                 try:
-                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, total_mtr=total_mtr_calc, price_sum=float(total_mtr_calc))
+                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, connection=conn_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, total_mtr=total_mtr_calc, price_sum=float(total_mtr_calc))
                                 except Exception as ex2:
                                     DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_qty=q63+q90+q110+q150, price_sum=float(total_mtr_calc))
                             c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; 
-                            # DON'T clear area and labour - keep them persistent like title (user request)
-                            # area_input.value = ""; labour_input.value = "";  # REMOVED - stay same after save
+                            # Area/Labour persistent - DON'T clear (user request)
+                            # But Connection clear after save - each time different (user request)
+                            try:
+                                connection_input.value = ""
+                                connection_input.update()
+                            except:
+                                pass
                             extra_state["63"]=0; extra_state["90"]=0; extra_state["110"]=0; extra_state["150"]=0;
                             extra_63_input.value=""; extra_90_input.value=""; extra_110_input.value=""; extra_150_input.value="";
                             update_live_preview()
@@ -1189,6 +1203,10 @@ def main_spa_page():
                                                     with ui.row().classes("items-center gap-2"): ui.icon("location_on", color="green", size="1.1rem"); ui.label(area_display).classes("font-extrabold text-[15px] text-indigo-900")
                                                     ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
                                                 ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
+                                                # Show connection if exists
+                                                conn_disp = get_q(report, 'connection', '')
+                                                if conn_disp:
+                                                    ui.label(f"🔌 Connection: {conn_disp}").classes("text-[11px] font-extrabold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full mt-1")
                                                 with ui.row().classes("w-full justify-between items-center mt-1"):
                                                     ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[13px] font-bold text-slate-700")
                                                     ui.label(f"Total: {report.total_qty} Qty").classes("text-[14px] font-extrabold text-emerald-600")
@@ -1207,6 +1225,8 @@ def main_spa_page():
                                                             e_area = ui.input(value=report.area_name).props("outlined dense").classes("w-full font-bold")
                                                             ui.label("Labour Name").classes("text-[11px] font-bold text-slate-700")
                                                             e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
+                                                            ui.label("Connection").classes("text-[11px] font-bold text-orange-700")
+                                                            e_connection = ui.input(value=get_q(report,'connection','')).props("outlined dense color=orange").classes("w-full font-bold bg-orange-50")
                                                             ui.label("Report Title").classes("text-[11px] font-bold text-slate-700")
                                                             e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
                                                             ui.label("PVC & DI Quantity").classes("text-[13px] font-extrabold text-green-700 mt-2")
@@ -1240,7 +1260,7 @@ def main_spa_page():
                                                         with ui.row().classes("w-full justify-between gap-2 p-2 bg-white border-t shrink-0"):
                                                             ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded dense").classes("flex-1 bg-slate-100 text-[12px]")
                                                             save_edit_btn = ui.button("OK", icon="check").props("rounded dense").classes("flex-1 bg-blue-600 text-white font-bold text-[12px]")
-                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, dlg=edit_dialog, ex63=e_extra_63, ex90=e_extra_90, ex110=e_extra_110, ex150=e_extra_150):
+                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, ec=e_connection, dlg=edit_dialog, ex63=e_extra_63, ex90=e_extra_90, ex110=e_extra_110, ex150=e_extra_150):
                                                                 def do_save():
                                                                     try:
                                                                         try:
@@ -1249,6 +1269,11 @@ def main_spa_page():
                                                                             new_date = rpt.report_date
                                                                         new_area = (ea.value or "").strip() or rpt.area_name
                                                                         new_labour = (el.value or "").strip() or get_q(rpt,'labour_name','')
+                                                                        new_conn = (ec.value or "").strip() if 'ec' in locals() or 'ec' in globals() or True else ""
+                                                                        try:
+                                                                            new_conn = (ec.value or "").strip()
+                                                                        except:
+                                                                            new_conn = get_q(rpt,'connection','')
                                                                         new_title = (et.value or "").strip() or rpt.report_title
                                                                         def pq(v):
                                                                             try: return float(v) if v not in (None, "") else 0
@@ -1260,6 +1285,10 @@ def main_spa_page():
                                                                         rpt.area_name = new_area
                                                                         try:
                                                                             rpt.labour_name = new_labour
+                                                                        except:
+                                                                            pass
+                                                                        try:
+                                                                            rpt.connection = new_conn
                                                                         except:
                                                                             pass
                                                                         rpt.report_title = new_title
@@ -1367,6 +1396,10 @@ def main_spa_page():
                                     ui.icon("location_on", color="green"); ui.label(f"Area: {report.area_name or 'No Area'}").classes("font-extrabold text-base text-green-900")
                                 with ui.row().classes("w-full items-center gap-2"):
                                     ui.icon("engineering", color="blue"); ui.label(f"Labour: {get_q(report,'labour_name','') or 'No Labour'}").classes("font-bold text-sm text-blue-900")
+                                conn_det = get_q(report, 'connection', '')
+                                if conn_det:
+                                    with ui.row().classes("w-full items-center gap-2"):
+                                        ui.icon("power", color="orange"); ui.label(f"Connection: {conn_det}").classes("font-extrabold text-sm text-orange-800 bg-orange-100 px-2 py-1 rounded-full")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0 mb-4"):
                             # Header
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
@@ -1416,6 +1449,7 @@ def main_spa_page():
                             ui.label(f"📅 Date: {report.report_date.strftime('%d-%m-%Y')}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"📍 Area: {report.area_name}").classes("text-xs font-bold text-slate-700")
                             ui.label(f"👷 Labour: {get_q(report,'labour_name','') or 'No Labour'}").classes("text-xs font-bold text-slate-700")
+                            ui.label(f"🔌 Connection: {get_q(report,'connection','') or 'No Connection'}").classes("text-xs font-bold text-orange-700")
                             ui.label(f"📄 Title: {report.report_title}").classes("text-xs font-bold text-slate-700")
                         with ui.dialog() as detail_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                             with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
