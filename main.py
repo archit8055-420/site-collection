@@ -99,6 +99,8 @@ def ensure_neon_fast():
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_report_title VARCHAR(255) DEFAULT 'Veraval site';")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
                 # SavedArea
                 cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 # SavedLabour
@@ -775,14 +777,21 @@ def main_spa_page():
                             return labours
                         saved_areas = get_areas()
                         saved_labours = get_labours()
-                        # Area + Labour Name - PERSISTENT like SAVARKUDLA NAGARPALIKA title
-                        # Saves to app.storage and stays same until user changes - no suggestions, saves space
+                        # Area + Labour Name - PERSISTENT EXACTLY LIKE SAVARKUDLA NAGARPALIKA TITLE
+                        # Once you type kanjibhai, it stays kanjibhai for 10 logins until you change it - saves to DB + storage
                         def get_default_area():
-                            # Try from storage first, then from last saved report
                             try:
+                                # 1. Storage (fast)
                                 stored = app.storage.user.get("default_area_name", "")
                                 if stored:
                                     return stored
+                                # 2. DB (cross-device, like title)
+                                if hasattr(user, 'default_area_name') and user.default_area_name:
+                                    return user.default_area_name
+                                # 3. Last report
+                                last = DailyReport.objects.filter(user=user).order_by("-id").first()
+                                if last and last.area_name:
+                                    return last.area_name
                             except:
                                 pass
                             return ""
@@ -791,16 +800,57 @@ def main_spa_page():
                                 stored = app.storage.user.get("default_labour_name", "")
                                 if stored:
                                     return stored
+                                if hasattr(user, 'default_labour_name') and user.default_labour_name:
+                                    return user.default_labour_name
+                                last = DailyReport.objects.filter(user=user).order_by("-id").first()
+                                if last and last.labour_name:
+                                    return last.labour_name
                             except:
                                 pass
                             return ""
+                        def save_default_area():
+                            try:
+                                val = (area_input.value or "").strip()
+                                if not val:
+                                    return
+                                # Save to storage (instant)
+                                app.storage.user["default_area_name"] = val
+                                # Save to DB (persistent like title) - cross device
+                                if val != getattr(user, 'default_area_name', ''):
+                                    try:
+                                        user.default_area_name = val
+                                        user.save(update_fields=['default_area_name'])
+                                        CACHE["users"][user.email] = user
+                                    except:
+                                        pass
+                            except Exception as e:
+                                print(f"Area save fail: {e}")
+                        def save_default_labour():
+                            try:
+                                val = (labour_input.value or "").strip()
+                                if not val:
+                                    return
+                                app.storage.user["default_labour_name"] = val
+                                if val != getattr(user, 'default_labour_name', ''):
+                                    try:
+                                        user.default_labour_name = val
+                                        user.save(update_fields=['default_labour_name'])
+                                        CACHE["users"][user.email] = user
+                                    except:
+                                        pass
+                            except Exception as e:
+                                print(f"Labour save fail: {e}")
                         with ui.row().classes("w-full mb-1 gap-2"):
                             with ui.column().classes("flex-1 gap-0.5"):
                                 ui.label("Enter Area *").classes("text-[12px] font-extrabold text-green-700 ml-1")
                                 area_input = ui.input(placeholder="Type area...", value=get_default_area()).props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
+                                area_input.on("blur", lambda _: save_default_area())
+                                area_input.on("keydown.enter", lambda _: save_default_area())
                             with ui.column().classes("flex-1 gap-0.5"):
                                 ui.label("Enter Labour Name").classes("text-[12px] font-extrabold text-blue-700 ml-1")
                                 labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
+                                labour_input.on("blur", lambda _: save_default_labour())
+                                labour_input.on("keydown.enter", lambda _: save_default_labour())
                         with ui.row().classes("w-full justify-center items-center gap-1 mb-0.5"):
                             ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
                         # STATE for extra MTR - NEW FEATURE
