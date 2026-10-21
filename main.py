@@ -97,6 +97,8 @@ def ensure_neon_fast():
                 # AppUser table
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_report_title VARCHAR(255) DEFAULT 'Veraval site';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
                 # SavedArea
                 cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 # SavedLabour
@@ -773,45 +775,32 @@ def main_spa_page():
                             return labours
                         saved_areas = get_areas()
                         saved_labours = get_labours()
-                        # Area + Labour Name side by side - FIXED: No live filtering while typing
-                        with ui.row().classes("w-full mb-0.5 gap-1.5"):
+                        # Area + Labour Name - PERSISTENT like SAVARKUDLA NAGARPALIKA title
+                        # Saves to app.storage and stays same until user changes - no suggestions, saves space
+                        def get_default_area():
+                            # Try from storage first, then from last saved report
+                            try:
+                                stored = app.storage.user.get("default_area_name", "")
+                                if stored:
+                                    return stored
+                            except:
+                                pass
+                            return ""
+                        def get_default_labour():
+                            try:
+                                stored = app.storage.user.get("default_labour_name", "")
+                                if stored:
+                                    return stored
+                            except:
+                                pass
+                            return ""
+                        with ui.row().classes("w-full mb-1 gap-2"):
                             with ui.column().classes("flex-1 gap-0.5"):
                                 ui.label("Enter Area *").classes("text-[12px] font-extrabold text-green-700 ml-1")
-                                area_input = ui.input(placeholder="Type area...", value="").props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
-                                with ui.row().classes("w-full gap-1 flex-wrap") as suggestions_row:
-                                    def refresh_suggestions():
-                                        # FIXED: Show only saved full names, no live filtering on typing
-                                        # Suggestion only after save, not while typing S, Su, Sur...
-                                        current_saved = get_areas()
-                                        suggestions_row.clear()
-                                        with suggestions_row:
-                                            for area in current_saved[:3]:
-                                                def make_click(a=area):
-                                                    def click():
-                                                        area_input.value = a
-                                                        area_input.update()
-                                                    return click
-                                                ui.button(area, on_click=make_click()).props("flat dense rounded").classes("text-[11px] bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold px-2.5 py-0.5")
-                                    refresh_suggestions()
-                                # NO on_value_change live filtering - Only show after save
+                                area_input = ui.input(placeholder="Type area...", value=get_default_area()).props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                             with ui.column().classes("flex-1 gap-0.5"):
                                 ui.label("Enter Labour Name").classes("text-[12px] font-extrabold text-blue-700 ml-1")
-                                labour_input = ui.input(placeholder="Type labour...", value="").props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
-                                with ui.row().classes("w-full gap-1 flex-wrap") as labour_suggestions_row:
-                                    def refresh_labour_suggestions():
-                                        # FIXED: Show only saved full names after save, no live filtering
-                                        current_saved = get_labours()
-                                        labour_suggestions_row.clear()
-                                        with labour_suggestions_row:
-                                            for lab in current_saved[:3]:
-                                                def make_click(a=lab):
-                                                    def click():
-                                                        labour_input.value = a
-                                                        labour_input.update()
-                                                    return click
-                                                ui.button(lab, on_click=make_click()).props("flat dense rounded").classes("text-[11px] bg-blue-50 border border-blue-200 text-blue-700 font-bold px-2.5 py-0.5")
-                                    refresh_labour_suggestions()
-                                # NO on_value_change live filtering for labour
+                                labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                         with ui.row().classes("w-full justify-center items-center gap-1 mb-0.5"):
                             ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
                         # STATE for extra MTR - NEW FEATURE
