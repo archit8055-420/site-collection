@@ -344,14 +344,19 @@ def generate_single_pdf(report):
         import traceback; traceback.print_exc()
         return generate_single_csv(report)
 
-def generate_month_csv(title, period_text, t63, t90, t110, t150=0):
+def generate_month_csv(title, period_text, t63, t90, t110, t150=0, te63=0, te90=0, te110=0, te150=0):
     output = io.StringIO(); writer = csv.writer(output)
-    writer.writerow([title]); writer.writerow([period_text]); writer.writerow([]); writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
-    writer.writerow([1, "63MM PVC", t63, "6MTR per PIPES"]); writer.writerow([2, "90MM PVC", t90, "6MTR per PIPES"]); writer.writerow([3, "110MM PVC", t110, "6MTR per PIPES"]); writer.writerow([4, "150MM DI", t150, "5.5MTR"]); writer.writerow([])
-    writer.writerow([f"Total PVC: {t63+t90+t110} Qty"]); writer.writerow([f"Total DI: {t150} Qty"]); writer.writerow([f"Grand Total: {t63+t90+t110+t150} Qty"])
+    writer.writerow([title]); writer.writerow([period_text]); writer.writerow([])
+    writer.writerow(["Sr.No", "Pipe Dia", "Quantity", "Extra MTR", "UNIT", "Total MTR"])
+    tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
+    writer.writerow([1, "63MM PVC", t63, te63, "6MTR per PIPES", tm63]); writer.writerow([2, "90MM PVC", t90, te90, "6MTR per PIPES", tm90]); writer.writerow([3, "110MM PVC", t110, te110, "6MTR per PIPES", tm110]); writer.writerow([4, "150MM DI", t150, te150, "5.5MTR", tm150]); writer.writerow([])
+    writer.writerow([f"Total PVC: {t63+t90+t110} Qty | Extra: {te63+te90+te110} MTR | Total MTR: {tm63+tm90+tm110} MTR"])
+    writer.writerow([f"Total DI: {t150} Qty | Extra: {te150} MTR | Total MTR: {tm150} MTR"])
+    writer.writerow([f"Grand Extra: {te63+te90+te110+te150} MTR | Grand Total MTR: {tm63+tm90+tm110+tm150} MTR"])
+    writer.writerow([f"Grand Total Qty: {t63+t90+t110+t150} Qty"])
     return output.getvalue().encode("utf-8")
 
-def generate_month_excel(title, period_text, t63, t90, t110, t150=0):
+def generate_month_excel(title, period_text, t63, t90, t110, t150=0, te63=0, te90=0, te110=0, te150=0):
     try:
         from openpyxl import Workbook
         from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
@@ -361,13 +366,14 @@ def generate_month_excel(title, period_text, t63, t90, t110, t150=0):
         hdr_font = Font(bold=True, color="FFFFFF", size=11)
         ws.merge_cells('A1:D1'); ws['A1'] = title; ws['A1'].font = Font(bold=True, size=14); ws['A1'].alignment = Alignment(horizontal='center')
         ws.merge_cells('A2:D2'); ws['A2'] = period_text; ws['A2'].alignment = Alignment(horizontal='center')
-        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "UNIT"])
+        ws.append([]); ws.append(["Sr.No", "Pipe Dia", "Quantity", "Extra MTR", "UNIT", "Total MTR"])
         r = ws.max_row
-        for col in range(1,5): cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6MTR per PIPES"), ("90MM PVC", t90, "6MTR per PIPES"), ("110MM PVC", t110, "6MTR per PIPES"), ("150MM DI", t150, "5.5MTR")], start=1):
-            ws.append([idx, dia, qty, unit]); rr = ws.max_row
-            for col in range(1,5): ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
-        ws.append([]); ws.append(["", "Total PVC", f"{t63+t90+t110} Qty", ""]); ws.append(["", "Total DI", f"{t150} Qty", ""]); ws.append(["", "Grand Total", f"{t63+t90+t110+t150} Qty", ""])
+        for col in range(1,7): cell = ws.cell(row=r, column=col); cell.fill = hdr_fill; cell.font = hdr_font; cell.alignment = Alignment(horizontal='center'); cell.border = thin
+        tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
+        for idx, (dia, qty, extra, unit, total_mtr) in enumerate([("63MM PVC", t63, te63, "6MTR per PIPES", tm63), ("90MM PVC", t90, te90, "6MTR per PIPES", tm90), ("110MM PVC", t110, te110, "6MTR per PIPES", tm110), ("150MM DI", t150, te150, "5.5MTR", tm150)], start=1):
+            ws.append([idx, dia, qty, extra, unit, total_mtr]); rr = ws.max_row
+            for col in range(1,7): ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
+        ws.append([]); ws.append(["", "Total PVC", f"{t63+t90+t110} Qty", f"{te63+te90+te110} MTR", "", f"{tm63+tm90+tm110} MTR"]); ws.append(["", "Total DI", f"{t150} Qty", f"{te150} MTR", "", f"{tm150} MTR"]); ws.append(["", "Grand Extra", f"{te63+te90+te110+te150} MTR", "", "", f"{tm63+tm90+tm110+tm150} MTR"]); ws.append(["", "Grand Total", f"{t63+t90+t110+t150} Qty", "", "", ""])
         for rr in [ws.max_row-2, ws.max_row-1, ws.max_row]:
             for col in range(1,5): ws.cell(row=rr, column=col).font = Font(bold=True); ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
         ws.column_dimensions['A'].width = 12; ws.column_dimensions['B'].width = 18; ws.column_dimensions['C'].width = 18; ws.column_dimensions['D'].width = 15
@@ -375,7 +381,7 @@ def generate_month_excel(title, period_text, t63, t90, t110, t150=0):
     except Exception:
         return generate_month_csv(title, period_text, t63, t90, t110, t150)
 
-def generate_month_pdf(title, period_text, t63, t90, t110, t150=0):
+def generate_month_pdf(title, period_text, t63, t90, t110, t150=0, te63=0, te90=0, te110=0, te150=0):
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
@@ -386,13 +392,14 @@ def generate_month_pdf(title, period_text, t63, t90, t110, t150=0):
         c.setFont("Helvetica", 10); c.drawCentredString(w/2, h-55, period_text)
         y = h - 120
         c.setFillColor(colors.HexColor("#059669")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 11); c.drawString(70, y+2, "Sr.No"); c.drawString(150, y+2, "Pipe Dia"); c.drawString(270, y+2, "Quantity"); c.drawString(390, y+2, "UNIT")
-        y -= 30; c.setFont("Helvetica", 11)
-        for idx, (dia, qty, unit) in enumerate([("63MM PVC", t63, "6MTR per PIPES"), ("90MM PVC", t90, "6MTR per PIPES"), ("110MM PVC", t110, "6MTR per PIPES"), ("150MM DI", t150, "5.5MTR")], start=1):
+        c.setFillColor(colors.white); c.setFont("Helvetica-Bold", 8); c.drawString(50, y+2, "Sr.No"); c.drawString(90, y+2, "Pipe Dia"); c.drawString(190, y+2, "Qty"); c.drawString(240, y+2, "Extra"); c.drawString(300, y+2, "UNIT"); c.drawString(400, y+2, "Total MTR")
+        y -= 30; c.setFont("Helvetica", 10)
+        tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
+        for idx, (dia, qty, extra, unit, total_mtr) in enumerate([("63MM PVC", t63, te63, "6MTR per PIPES", tm63), ("90MM PVC", t90, te90, "6MTR per PIPES", tm90), ("110MM PVC", t110, te110, "6MTR per PIPES", tm110), ("150MM DI", t150, te150, "5.5MTR", tm150)], start=1):
             if idx % 2 == 0: c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(50, y-5, 500, 22, fill=1, stroke=0)
             c.setFillColor(colors.black); c.drawString(70, y, str(idx)); c.drawString(150, y, dia); c.drawString(270, y, str(qty)); c.drawString(390, y, unit); y -= 22
         y -= 10; c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(50, y-5, 500, 25, fill=1, stroke=0)
-        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 11); c.drawString(70, y+2, f"PVC: {t63+t90+t110} | DI: {t150} | Grand: {t63+t90+t110+t150}")
+        c.setFillColor(colors.HexColor("#059669")); c.setFont("Helvetica-Bold", 9); c.drawString(50, y+2, f"PVC: {t63+t90+t110} Qty Extra:{te63+te90+te110} MTR:{tm63+tm90+tm110} | DI:{t150} Extra:{te150} MTR:{tm150} | Grand MTR:{tm63+tm90+tm110+tm150}")
         c.showPage(); c.save(); return output.getvalue()
     except Exception:
         return generate_month_csv(title, period_text, t63, t90, t110, t150)
@@ -1335,16 +1342,31 @@ def main_spa_page():
                                                                 confirm_del_btn.on_click(make_del())
                                                 del_btn.on_click(del_dialog.open)
                             else:
-                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
+                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm'), ex63=Sum('extra_63mm'), ex90=Sum('extra_90mm'), ex110=Sum('extra_110mm'), ex150=Sum('extra_150mm'), tmtr=Sum('total_mtr')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; te63 = agg['ex63'] or 0; te90 = agg['ex90'] or 0; te110 = agg['ex110'] or 0; te150 = agg['ex150'] or 0; tmtr = agg['tmtr'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
-                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6MTR per PIPES"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "6MTR per PIPES"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "6MTR per PIPES"}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "unit": "5.5MTR"}]
-                                    columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
-                                    ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
-                                    with ui.row().classes("w-full justify-center gap-2 mt-2"):
-                                        ui.badge(f"Total PVC Pipes: {t63+t90+t110} Qty", color="blue").classes("text-xs font-bold px-2 py-1")
-                                        ui.badge(f"Total DI Pipes: {t150} Qty", color="purple").classes("text-xs font-bold px-2 py-1")
+                                    # Calculate total MTR per type: qty*6 + extra
+                                    tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
+                                    rows = [
+                                        {"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "unit": "6MTR", "total_mtr": tm63},
+                                        {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "unit": "6MTR", "total_mtr": tm90},
+                                        {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "unit": "6MTR", "total_mtr": tm110},
+                                        {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "unit": "5.5MTR", "total_mtr": tm150}
+                                    ]
+                                    columns = [
+                                        {"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"},
+                                        {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"},
+                                        {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"},
+                                        {"name": "extra", "label": "Extra MTR", "field": "extra", "align": "center"},
+                                        {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"},
+                                        {"name": "total_mtr", "label": "Total MTR", "field": "total_mtr", "align": "center"}
+                                    ]
+                                    ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-[11px] font-semibold")
+                                    with ui.row().classes("w-full justify-center gap-2 mt-2 flex-wrap"):
+                                        ui.badge(f"PVC: {t63+t90+t110} Qty | Extra:{te63+te90+te110} MTR | Total MTR:{tm63+tm90+tm110}", color="blue").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"DI: {t150} Qty | Extra:{te150} MTR | Total MTR:{tm150}", color="purple").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"Grand Extra: {te63+te90+te110+te150} MTR | Grand Total MTR: {tm63+tm90+tm110+tm150}", color="green").classes("text-[10px] font-bold px-2 py-1")
                                     with ui.dialog() as month_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                                         with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
                                             ui.label(f"📥 Download {period_text}").classes("font-extrabold text-xs text-white")
@@ -1352,15 +1374,15 @@ def main_spa_page():
                                         with ui.column().classes("w-full p-4 gap-2 bg-white"):
                                             ui.label(f"{period_text} - {t63+t90+t110+t150} Qty").classes("text-xs font-bold text-green-700 text-center w-full mb-1")
                                             def do_m_csv():
-                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110, t150)
+                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.csv")
                                                 month_download_dialog.close()
                                             def do_m_excel():
-                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110, t150)
+                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.xlsx")
                                                 month_download_dialog.close()
                                             def do_m_pdf():
-                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110, t150)
+                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.pdf")
                                                 month_download_dialog.close()
                                             ui.button("As CSV", icon="table_view", on_click=do_m_csv).props("outline rounded").classes("w-full font-bold text-sm border-blue-500 text-blue-600")
