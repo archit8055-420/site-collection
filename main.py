@@ -985,129 +985,17 @@ def main_spa_page():
                                 labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                                 labour_input.on("blur", lambda _: save_default_labour())
                                 labour_input.on("keydown.enter", lambda _: save_default_labour())
-                        # Pipe MTR state - persistent per user
-                        def get_mtr_63():
-                            try:
-                                stored = app.storage.user.get("mtr_63mm", None)
-                                if stored is not None:
-                                    return float(stored)
-                                if hasattr(user, 'mtr_63mm') and user.mtr_63mm:
-                                    return float(user.mtr_63mm)
-                            except:
-                                pass
-                            return 6.0
-                        def get_mtr_90():
-                            try:
-                                stored = app.storage.user.get("mtr_90mm", None)
-                                if stored is not None:
-                                    return float(stored)
-                                if hasattr(user, 'mtr_90mm') and user.mtr_90mm:
-                                    return float(user.mtr_90mm)
-                            except:
-                                pass
-                            return 6.0
-                        def get_mtr_110():
-                            try:
-                                stored = app.storage.user.get("mtr_110mm", None)
-                                if stored is not None:
-                                    return float(stored)
-                                if hasattr(user, 'mtr_110mm') and user.mtr_110mm:
-                                    return float(user.mtr_110mm)
-                            except:
-                                pass
-                            return 6.0
-                        def get_mtr_150():
-                            try:
-                                stored = app.storage.user.get("mtr_150mm", None)
-                                if stored is not None:
-                                    return float(stored)
-                                if hasattr(user, 'mtr_150mm') and user.mtr_150mm:
-                                    return float(user.mtr_150mm)
-                            except:
-                                pass
-                            return 5.5
+                        # Fixed Pipe MTR - by default 6,6,6,5.5 as requested
+                        pipe_mtr_state = {"63": 6.0, "90": 6.0, "110": 6.0, "150": 5.5}
                         
-                        pipe_mtr_state = {"63": get_mtr_63(), "90": get_mtr_90(), "110": get_mtr_110(), "150": get_mtr_150()}
-                        
-                        with ui.row().classes("w-full justify-between items-center gap-2 mb-1"):
-                            # Left: Set PIPE MTR button
-                            set_pipe_btn = ui.button("Set PIPE MTR", icon="settings").props("dense rounded color=blue outline").classes("text-[11px] font-bold px-2 py-1 border-blue-300")
-                            # Center: Pipeline Progress
+                        with ui.row().classes("w-full justify-center items-center gap-3 mb-1"):
+                            # Center: Pipeline Progress - centered
                             with ui.row().classes("items-center gap-1"):
                                 ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800 text-center")
                             # Right: Connection
                             with ui.column().classes("gap-0"):
                                 ui.label("Connection").classes("text-[10px] font-bold text-orange-700 ml-1")
                                 connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-28 bg-orange-50 font-bold text-[12px] shadow-sm border border-orange-200")
-                        
-                        # Dialog for Set PIPE MTR
-                        with ui.dialog() as pipe_mtr_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
-                            with ui.column().classes("w-full p-0 gap-0"):
-                                with ui.row().classes("w-full bg-gradient-to-r from-blue-600 to-indigo-600 p-3 items-center justify-between text-white"):
-                                    ui.label("⚙️ Set Per Pipe MTR").classes("font-extrabold text-[13px] text-white")
-                                    ui.button(icon="close", on_click=pipe_mtr_dialog.close).props("flat round dense color=white").classes("text-white")
-                                with ui.column().classes("w-full p-4 gap-3 bg-white"):
-                                    ui.label("Per Pipe MTR set karo - permanent rahe, login karo to same rahe").classes("text-[11px] font-bold text-slate-600 text-center w-full bg-blue-50 px-2 py-1 rounded-full")
-                                    with ui.grid(columns=2).classes("w-full gap-3 mt-1"):
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("63MM PVC (MTR)").classes("text-[11px] font-bold text-green-700")
-                                            mtr_63_input = ui.input(value=str(pipe_mtr_state["63"])).props("type=number outlined dense color=green step=0.1").classes("w-full font-bold text-center")
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("90MM PVC (MTR)").classes("text-[11px] font-bold text-green-700")
-                                            mtr_90_input = ui.input(value=str(pipe_mtr_state["90"])).props("type=number outlined dense color=green step=0.1").classes("w-full font-bold text-center")
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("110MM PVC (MTR)").classes("text-[11px] font-bold text-green-700")
-                                            mtr_110_input = ui.input(value=str(pipe_mtr_state["110"])).props("type=number outlined dense color=green step=0.1").classes("w-full font-bold text-center")
-                                        with ui.column().classes("gap-1"):
-                                            ui.label("150MM DI (MTR)").classes("text-[11px] font-bold text-purple-700")
-                                            mtr_150_input = ui.input(value=str(pipe_mtr_state["150"])).props("type=number outlined dense color=purple step=0.1").classes("w-full font-bold text-center")
-                                    with ui.row().classes("w-full justify-between gap-2 mt-2"):
-                                        ui.button("Cancel", on_click=pipe_mtr_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-[12px]")
-                                        save_mtr_btn = ui.button("Save MTR", icon="save").props("rounded").classes("flex-1 bg-blue-600 text-white font-bold text-[12px]")
-                                    def save_pipe_mtr():
-                                        try:
-                                            def parse_mtr(v, default):
-                                                try:
-                                                    f = float(str(v).strip() or default)
-                                                    if f <=0:
-                                                        return default
-                                                    return f
-                                                except:
-                                                    return default
-                                            nm63 = parse_mtr(mtr_63_input.value, 6.0)
-                                            nm90 = parse_mtr(mtr_90_input.value, 6.0)
-                                            nm110 = parse_mtr(mtr_110_input.value, 6.0)
-                                            nm150 = parse_mtr(mtr_150_input.value, 5.5)
-                                            pipe_mtr_state["63"] = nm63
-                                            pipe_mtr_state["90"] = nm90
-                                            pipe_mtr_state["110"] = nm110
-                                            pipe_mtr_state["150"] = nm150
-                                            # Save to storage
-                                            app.storage.user["mtr_63mm"] = nm63
-                                            app.storage.user["mtr_90mm"] = nm90
-                                            app.storage.user["mtr_110mm"] = nm110
-                                            app.storage.user["mtr_150mm"] = nm150
-                                            # Save to DB - permanent
-                                            try:
-                                                user.mtr_63mm = nm63
-                                                user.mtr_90mm = nm90
-                                                user.mtr_110mm = nm110
-                                                user.mtr_150mm = nm150
-                                                user.save(update_fields=['mtr_63mm', 'mtr_90mm', 'mtr_110mm', 'mtr_150mm'])
-                                                CACHE["users"][user.email] = user
-                                            except Exception as e:
-                                                print(f"MTR DB save fail: {e}")
-                                            # Update live preview
-                                            try:
-                                                update_live_preview()
-                                            except:
-                                                pass
-                                            pipe_mtr_dialog.close()
-                                            ui.notify(f"✅ MTR Saved: 63={nm63}, 90={nm90}, 110={nm110}, 150={nm150}", type="positive", timeout=3000)
-                                        except Exception as e:
-                                            ui.notify(f"Error: {e}", type="negative")
-                                    save_mtr_btn.on_click(save_pipe_mtr)
-                        set_pipe_btn.on_click(pipe_mtr_dialog.open)
 
                         # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
