@@ -851,8 +851,27 @@ def main_spa_page():
                                 labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                                 labour_input.on("blur", lambda _: save_default_labour())
                                 labour_input.on("keydown.enter", lambda _: save_default_labour())
-                        with ui.row().classes("w-full justify-center items-center gap-1 mb-0.5"):
-                            ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
+                        with ui.row().classes("w-full justify-between items-center gap-2 mb-1"):
+                            with ui.row().classes("items-center gap-1"):
+                                ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800")
+                            # Connection edit text - user requested
+                            with ui.column().classes("gap-0"):
+                                ui.label("Connection").classes("text-[10px] font-bold text-slate-600 ml-1")
+                                connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-32 bg-white font-bold text-[12px] shadow-sm")
+                                # Persist connection like area/labour if needed
+                                try:
+                                    conn_saved = app.storage.user.get("default_connection", "")
+                                    if conn_saved:
+                                        connection_input.value = conn_saved
+                                except:
+                                    pass
+                                def save_conn():
+                                    try:
+                                        app.storage.user["default_connection"] = (connection_input.value or "").strip()
+                                    except:
+                                        pass
+                                connection_input.on("blur", lambda _: save_conn())
+                                connection_input.on("keydown.enter", lambda _: save_conn())
                         # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
                         
@@ -1050,6 +1069,13 @@ def main_spa_page():
                                 selected_date = today_ist()
                             area_val = (area_input.value or "").strip()
                             labour_val = (labour_input.value or "").strip()
+                            conn_val = ""
+                            try:
+                                conn_val = (connection_input.value or "").strip()
+                                if conn_val:
+                                    app.storage.user["default_connection"] = conn_val
+                            except:
+                                pass
                             if not area_val: ui.notify("Please Enter Area!", type="warning", position="top"); return
                             if area_val not in (CACHE["areas"].get(user.id, [])):
                                 SavedArea.objects.get_or_create(user=user, area_name=area_val)
@@ -1086,11 +1112,26 @@ def main_spa_page():
                                 except Exception as ex2:
                                     DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_qty=q63+q90+q110+q150, price_sum=float(total_mtr_calc))
                             c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; 
-                            area_input.value = ""; labour_input.value = ""; 
+                            # DON'T clear area and labour - keep them persistent like title (user request)
+                            # area_input.value = ""; labour_input.value = "";  # REMOVED - stay same after save
                             extra_state["63"]=0; extra_state["90"]=0; extra_state["110"]=0; extra_state["150"]=0;
                             extra_63_input.value=""; extra_90_input.value=""; extra_110_input.value=""; extra_150_input.value="";
                             update_live_preview()
-                            get_areas(); get_labours(); refresh_suggestions(); refresh_labour_suggestions()
+                            # Save area/labour as default so it stays after back and re-entry
+                            try:
+                                app.storage.user["default_area_name"] = area_val
+                                app.storage.user["default_labour_name"] = labour_val
+                                user.default_area_name = area_val
+                                user.default_labour_name = labour_val
+                                user.save(update_fields=['default_area_name', 'default_labour_name'])
+                                CACHE["users"][user.email] = user
+                            except Exception as e:
+                                print(f"Persist area/labour fail: {e}")
+                                try:
+                                    app.storage.user["default_area_name"] = area_val
+                                    app.storage.user["default_labour_name"] = labour_val
+                                except:
+                                    pass
                             ui.notify(f"✅ Saved! Area:{area_val} MTR:{total_mtr_calc} (Extra:{ex63+ex90+ex110+ex150})", type="positive", position="top", timeout=3000)
                         ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
 
