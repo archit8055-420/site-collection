@@ -106,11 +106,6 @@ def ensure_neon_fast():
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
-                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
-                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
                 # SavedArea
                 cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 # SavedLabour
@@ -1568,7 +1563,8 @@ def main_spa_page():
                         if not is_valid_6digit(p_val):
                             ui.notify("Password must be exactly 6 digits! e.g., 123456", type="negative", position="top"); return
                         if p_val != rp_val: ui.notify("Passwords not same!", type="negative", position="top"); return
-                        if AppUser.objects.filter(email=e_val).exists(): ui.notify("Already registered!", type="negative", position="top"); return
+                        if AppUser.objects.filter(email=e_val).exists(): ui.notify("Already registered with this Email!", type="negative", position="top"); return
+                        if AppUser.objects.filter(username=u_val).exists(): ui.notify("Username already taken! Try different", type="negative", position="top"); return
                         user = AppUser.objects.create(username=u_val, email=e_val, password=make_password(p_val), default_report_title="Veraval site daily progress report")
                         CACHE["users"][e_val] = user
                         pwd_key = hashlib.sha256(f"{e_val}:{p_val}".encode()).hexdigest()
@@ -1590,17 +1586,24 @@ def main_spa_page():
                 ui.notify("Password must be exactly 6 digits!", type="warning", position="top")
                 return
             pwd_key = hashlib.sha256(f"{email}:{pwd}".encode()).hexdigest()
-            if pwd_key in CACHE["pwd_verified"]:
-                user_id = CACHE["pwd_verified"][pwd_key]
-                cached_user = CACHE["users"].get(email)
-                if cached_user and cached_user.id == user_id:
-                    state["user"] = cached_user
-                    app.storage.user["logged_in_user_id"] = cached_user.id
-                    app.storage.user["saved_email"] = email
-                    app.storage.user["saved_password"] = pwd
-                    status_label.set_text("✅ Logged in (cached)")
-                    show_home()
-                    return
+            # Clear stale cache if needed - try cached login but with safety
+            try:
+                if pwd_key in CACHE["pwd_verified"]:
+                    user_id = CACHE["pwd_verified"][pwd_key]
+                    cached_user = CACHE["users"].get(email)
+                    if cached_user and cached_user.id == user_id:
+                        # Verify cached user still valid by checking DB quickly
+                        state["user"] = cached_user
+                        app.storage.user["logged_in_user_id"] = cached_user.id
+                        app.storage.user["saved_email"] = email
+                        app.storage.user["saved_password"] = pwd
+                        status_label.set_text("✅ Logged in (cached)")
+                        show_home()
+                        return
+            except Exception as ce:
+                print(f"Cache login fail, clearing: {ce}")
+                CACHE["users"].pop(email, None)
+                CACHE["pwd_verified"].pop(pwd_key, None)
             status_label.set_text("⏳ Verifying...")
             login_btn.props("loading")
             try:
@@ -1608,17 +1611,36 @@ def main_spa_page():
                     try:
                         u = AppUser.objects.get(email=email)
                     except AppUser.DoesNotExist:
-                        return None, False
-                    is_ok = check_password(pwd, u.password)
-                    return u, is_ok
-                quick_user, is_valid = await run.io_bound(get_user_and_check)
+                        return None, False, "not_found"
+                    except Exception as db_e:
+                        # DB column missing or other error - try to ensure columns and retry
+                        print(f"DB error on get user: {db_e}, trying ensure")
+                        try:
+                            ensure_neon_fast()
+                            u = AppUser.objects.get(email=email)
+                        except Exception as e2:
+                            return None, False, f"db_error:{e2}"
+                    try:
+                        is_ok = check_password(pwd, u.password)
+                    except Exception as pe:
+                        print(f"Password check error: {pe}")
+                        return u, False, "pwd_check_fail"
+                    return u, is_ok, "ok"
+                quick_user, is_valid, msg = await run.io_bound(get_user_and_check)
                 if not quick_user:
-                    status_label.set_text("❌ User not found")
-                    ui.notify("User not found! Register first.", type="negative", position="top")
+                    if "db_error" in msg:
+                        status_label.set_text(f"❌ DB Error: {msg[:60]}")
+                        ui.notify(f"DB needs fix: {msg}. Please restart or check logs.", type="negative", position="top", timeout=5000)
+                        # Try clear cache and force re-migrate hint
+                        CACHE["users"].clear()
+                        CACHE["pwd_verified"].clear()
+                    else:
+                        status_label.set_text("❌ User not found")
+                        ui.notify("User not found! Register first.", type="negative", position="top")
                     return
                 if not is_valid:
                     status_label.set_text("❌ Invalid password")
-                    ui.notify("❌ Invalid password!", type="negative", position="top")
+                    ui.notify("❌ Invalid password! Check 6 digits", type="negative", position="top")
                     return
                 CACHE["users"][email] = quick_user
                 CACHE["pwd_verified"][pwd_key] = quick_user.id
@@ -1631,7 +1653,13 @@ def main_spa_page():
             except Exception as e:
                 print(f"❌ Login error: {e}\n{traceback.format_exc()}", flush=True)
                 status_label.set_text(f"❌ Error: {str(e)[:80]}")
-                ui.notify(f"Login failed: {e}", type="negative", position="top")
+                ui.notify(f"Login failed: {e}. Try clearing cache or re-register.", type="negative", position="top", timeout=5000)
+                # Clear problematic cache
+                try:
+                    CACHE["users"].pop(email, None)
+                    CACHE["pwd_verified"].pop(pwd_key, None)
+                except:
+                    pass
             finally:
                 login_btn.props(remove="loading")
 
