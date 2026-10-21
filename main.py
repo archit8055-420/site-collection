@@ -1,4 +1,3 @@
-
 import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
 print("🚀 FINAL VERAVAL TRACKER Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -69,6 +68,10 @@ def ensure_neon_fast():
                     "ALTER TABLE models_app_appuser ADD COLUMN default_area_name VARCHAR(255) DEFAULT '';",
                     "ALTER TABLE models_app_appuser ADD COLUMN default_labour_name VARCHAR(255) DEFAULT '';",
                     "ALTER TABLE models_app_appuser ADD COLUMN default_connection VARCHAR(100) DEFAULT '';",
+                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_63mm REAL DEFAULT 6.0;",
+                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_90mm REAL DEFAULT 6.0;",
+                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_110mm REAL DEFAULT 6.0;",
+                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_150mm REAL DEFAULT 5.5;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN qty_150mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_pvc REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_di REAL DEFAULT 0;",
@@ -111,6 +114,10 @@ def ensure_neon_fast():
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_63mm DOUBLE PRECISION DEFAULT 6.0;")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_90mm DOUBLE PRECISION DEFAULT 6.0;")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_110mm DOUBLE PRECISION DEFAULT 6.0;")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_150mm DOUBLE PRECISION DEFAULT 5.5;")
                 # SavedArea
                 cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 # SavedLabour
@@ -978,13 +985,130 @@ def main_spa_page():
                                 labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
                                 labour_input.on("blur", lambda _: save_default_labour())
                                 labour_input.on("keydown.enter", lambda _: save_default_labour())
-                        with ui.row().classes("w-full justify-center items-center gap-3 mb-1"):
+                        # Pipe MTR state - persistent per user
+                        def get_mtr_63():
+                            try:
+                                stored = app.storage.user.get("mtr_63mm", None)
+                                if stored is not None:
+                                    return float(stored)
+                                if hasattr(user, 'mtr_63mm') and user.mtr_63mm:
+                                    return float(user.mtr_63mm)
+                            except:
+                                pass
+                            return 6.0
+                        def get_mtr_90():
+                            try:
+                                stored = app.storage.user.get("mtr_90mm", None)
+                                if stored is not None:
+                                    return float(stored)
+                                if hasattr(user, 'mtr_90mm') and user.mtr_90mm:
+                                    return float(user.mtr_90mm)
+                            except:
+                                pass
+                            return 6.0
+                        def get_mtr_110():
+                            try:
+                                stored = app.storage.user.get("mtr_110mm", None)
+                                if stored is not None:
+                                    return float(stored)
+                                if hasattr(user, 'mtr_110mm') and user.mtr_110mm:
+                                    return float(user.mtr_110mm)
+                            except:
+                                pass
+                            return 6.0
+                        def get_mtr_150():
+                            try:
+                                stored = app.storage.user.get("mtr_150mm", None)
+                                if stored is not None:
+                                    return float(stored)
+                                if hasattr(user, 'mtr_150mm') and user.mtr_150mm:
+                                    return float(user.mtr_150mm)
+                            except:
+                                pass
+                            return 5.5
+                        
+                        pipe_mtr_state = {"63": get_mtr_63(), "90": get_mtr_90(), "110": get_mtr_110(), "150": get_mtr_150()}
+                        
+                        with ui.row().classes("w-full justify-between items-center gap-2 mb-1"):
+                            # Left: Set PIPE MTR button
+                            set_pipe_btn = ui.button("Set PIPE MTR", icon="settings").props("dense rounded color=blue outline").classes("text-[11px] font-bold px-2 py-1 border-blue-300")
+                            # Center: Pipeline Progress
                             with ui.row().classes("items-center gap-1"):
                                 ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800 text-center")
-                            # Connection - centered layout, each time different, clear after save
+                            # Right: Connection
                             with ui.column().classes("gap-0"):
                                 ui.label("Connection").classes("text-[10px] font-bold text-orange-700 ml-1")
                                 connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-28 bg-orange-50 font-bold text-[12px] shadow-sm border border-orange-200")
+                        
+                        # Dialog for Set PIPE MTR
+                        with ui.dialog() as pipe_mtr_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
+                            with ui.column().classes("w-full p-0 gap-0"):
+                                with ui.row().classes("w-full bg-gradient-to-r from-blue-600 to-indigo-600 p-3 items-center justify-between text-white"):
+                                    ui.label("⚙️ Set Per Pipe MTR").classes("font-extrabold text-[13px] text-white")
+                                    ui.button(icon="close", on_click=pipe_mtr_dialog.close).props("flat round dense color=white").classes("text-white")
+                                with ui.column().classes("w-full p-4 gap-3 bg-white"):
+                                    ui.label("Per Pipe MTR set karo - permanent rahe, login karo to same rahe").classes("text-[11px] font-bold text-slate-600 text-center w-full bg-blue-50 px-2 py-1 rounded-full")
+                                    with ui.grid(columns=2).classes("w-full gap-3 mt-1"):
+                                        with ui.column().classes("gap-1"):
+                                            ui.label("63MM PVC (MTR)").classes("text-[11px] font-bold text-green-700")
+                                            mtr_63_input = ui.input(value=str(pipe_mtr_state["63"])).props("type=number outlined dense color=green step=0.1").classes("w-full font-bold text-center")
+                                        with ui.column().classes("gap-1"):
+                                            ui.label("90MM PVC (MTR)").classes("text-[11px] font-bold text-green-700")
+                                            mtr_90_input = ui.input(value=str(pipe_mtr_state["90"])).props("type=number outlined dense color=green step=0.1").classes("w-full font-bold text-center")
+                                        with ui.column().classes("gap-1"):
+                                            ui.label("110MM PVC (MTR)").classes("text-[11px] font-bold text-green-700")
+                                            mtr_110_input = ui.input(value=str(pipe_mtr_state["110"])).props("type=number outlined dense color=green step=0.1").classes("w-full font-bold text-center")
+                                        with ui.column().classes("gap-1"):
+                                            ui.label("150MM DI (MTR)").classes("text-[11px] font-bold text-purple-700")
+                                            mtr_150_input = ui.input(value=str(pipe_mtr_state["150"])).props("type=number outlined dense color=purple step=0.1").classes("w-full font-bold text-center")
+                                    with ui.row().classes("w-full justify-between gap-2 mt-2"):
+                                        ui.button("Cancel", on_click=pipe_mtr_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-[12px]")
+                                        save_mtr_btn = ui.button("Save MTR", icon="save").props("rounded").classes("flex-1 bg-blue-600 text-white font-bold text-[12px]")
+                                    def save_pipe_mtr():
+                                        try:
+                                            def parse_mtr(v, default):
+                                                try:
+                                                    f = float(str(v).strip() or default)
+                                                    if f <=0:
+                                                        return default
+                                                    return f
+                                                except:
+                                                    return default
+                                            nm63 = parse_mtr(mtr_63_input.value, 6.0)
+                                            nm90 = parse_mtr(mtr_90_input.value, 6.0)
+                                            nm110 = parse_mtr(mtr_110_input.value, 6.0)
+                                            nm150 = parse_mtr(mtr_150_input.value, 5.5)
+                                            pipe_mtr_state["63"] = nm63
+                                            pipe_mtr_state["90"] = nm90
+                                            pipe_mtr_state["110"] = nm110
+                                            pipe_mtr_state["150"] = nm150
+                                            # Save to storage
+                                            app.storage.user["mtr_63mm"] = nm63
+                                            app.storage.user["mtr_90mm"] = nm90
+                                            app.storage.user["mtr_110mm"] = nm110
+                                            app.storage.user["mtr_150mm"] = nm150
+                                            # Save to DB - permanent
+                                            try:
+                                                user.mtr_63mm = nm63
+                                                user.mtr_90mm = nm90
+                                                user.mtr_110mm = nm110
+                                                user.mtr_150mm = nm150
+                                                user.save(update_fields=['mtr_63mm', 'mtr_90mm', 'mtr_110mm', 'mtr_150mm'])
+                                                CACHE["users"][user.email] = user
+                                            except Exception as e:
+                                                print(f"MTR DB save fail: {e}")
+                                            # Update live preview
+                                            try:
+                                                update_live_preview()
+                                            except:
+                                                pass
+                                            pipe_mtr_dialog.close()
+                                            ui.notify(f"✅ MTR Saved: 63={nm63}, 90={nm90}, 110={nm110}, 150={nm150}", type="positive", timeout=3000)
+                                        except Exception as e:
+                                            ui.notify(f"Error: {e}", type="negative")
+                                    save_mtr_btn.on_click(save_pipe_mtr)
+                        set_pipe_btn.on_click(pipe_mtr_dialog.open)
+
                         # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
                         
@@ -1008,11 +1132,7 @@ def main_spa_page():
                                 with ui.column().classes("p-0.5 items-center w-full"):
                                     add_150_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
                             
-                            with ui.grid(columns=4).classes("w-full bg-green-50 text-center border-y-2 border-indigo-900 items-center"):
-                                ui.label("6MTR per PIPES").classes("py-1.5 font-extrabold text-indigo-900 text-[11px]")
-                                ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-x-2 border-indigo-900")
-                                ui.label("6MTR per PIPES").classes("py-1 font-extrabold text-indigo-900 text-[9px] border-r-2 border-indigo-900")
-                                ui.label("5.5MTR").classes("py-1.5 font-extrabold text-indigo-900 text-[11px]")
+
                             # MTR Display Row - Count*6 + Extra
                             with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
                                 m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px]")
@@ -1130,7 +1250,7 @@ def main_spa_page():
                             except:
                                 return False
                         def update_live_preview():
-                            # ULTRA-FAST: Count*6 + Extra MTR
+                            # DYNAMIC: Count * Per Pipe MTR + Extra MTR
                             def fast_parse(v):
                                 try:
                                     if not v: return 0
@@ -1140,7 +1260,8 @@ def main_spa_page():
                                 except: return 0
                             q63 = fast_parse(c63.value); q90 = fast_parse(c90.value); q110 = fast_parse(c110.value); q150 = fast_parse(c150.value)
                             ex63 = extra_state.get("63",0); ex90 = extra_state.get("90",0); ex110 = extra_state.get("110",0); ex150 = extra_state.get("150",0)
-                            m63 = q63*6 + ex63; m90 = q90*6 + ex90; m110 = q110*6 + ex110; m150 = q150*5.5 + ex150
+                            pm63 = pipe_mtr_state.get("63",6.0); pm90 = pipe_mtr_state.get("90",6.0); pm110 = pipe_mtr_state.get("110",6.0); pm150 = pipe_mtr_state.get("150",5.5)
+                            m63 = q63*pm63 + ex63; m90 = q90*pm90 + ex90; m110 = q110*pm110 + ex110; m150 = q150*pm150 + ex150
                             total_mtr = m63+m90+m110+m150
                             total_extra = ex63+ex90+ex110+ex150
                             pvc_total_lbl.set_text(f"Total PVC Pipes : {q63+q90+q110} Quantity")
@@ -1175,7 +1296,8 @@ def main_spa_page():
                         def save_daily_report():
                             q63 = parse_qty(c63.value); q90 = parse_qty(c90.value); q110 = parse_qty(c110.value); q150 = parse_qty(c150.value)
                             ex63 = extra_state.get("63",0); ex90 = extra_state.get("90",0); ex110 = extra_state.get("110",0); ex150 = extra_state.get("150",0)
-                            total_mtr_calc = (q63*6+ex63)+(q90*6+ex90)+(q110*6+ex110)+(q150*5.5+ex150)
+                            pm63 = pipe_mtr_state.get("63",6.0); pm90 = pipe_mtr_state.get("90",6.0); pm110 = pipe_mtr_state.get("110",6.0); pm150 = pipe_mtr_state.get("150",5.5)
+                            total_mtr_calc = (q63*pm63+ex63)+(q90*pm90+ex90)+(q110*pm110+ex110)+(q150*pm150+ex150)
                             try:
                                 selected_date = datetime.datetime.strptime((home_date_input.value or "").strip(), "%Y-%m-%d").date()
                             except Exception:
@@ -1382,7 +1504,20 @@ def main_spa_page():
                                                                             except: return 0
                                                                         q63 = pq(e63.value); q90 = pq(e90.value); q110 = pq(e110.value); q150 = pq(e150.value)
                                                                         ex_63 = pq(ex63.value); ex_90 = pq(ex90.value); ex_110 = pq(ex110.value); ex_150 = pq(ex150.value)
-                                                                        total_mtr = (q63*6+ex_63)+(q90*6+ex_90)+(q110*6+ex_110)+(q150*5.5+ex_150)
+                                                                        # Use user's MTR for edit calc too
+                                                                        def get_umtr(f, d):
+                                                                            try:
+                                                                                return float(getattr(user, f, d))
+                                                                            except:
+                                                                                try:
+                                                                                    sv = app.storage.user.get(f, None)
+                                                                                    if sv is not None:
+                                                                                        return float(sv)
+                                                                                except:
+                                                                                    pass
+                                                                                return d
+                                                                        um63 = get_umtr('mtr_63mm', 6.0); um90 = get_umtr('mtr_90mm', 6.0); um110 = get_umtr('mtr_110mm', 6.0); um150 = get_umtr('mtr_150mm', 5.5)
+                                                                        total_mtr = (q63*um63+ex_63)+(q90*um90+ex_90)+(q110*um110+ex_110)+(q150*um150+ex_150)
                                                                         rpt.report_date = new_date
                                                                         rpt.area_name = new_area
                                                                         try:
@@ -1441,20 +1576,32 @@ def main_spa_page():
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
-                                    # Calculate total MTR per type: qty*6 + extra
-                                    tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
+                                    # Calculate total MTR per type: qty * user MTR + extra - dynamic
+                                    def get_user_mtr(field, default):
+                                        try:
+                                            v = getattr(user, field, default)
+                                            return float(v) if v else default
+                                        except:
+                                            try:
+                                                sv = app.storage.user.get(field, None)
+                                                if sv is not None:
+                                                    return float(sv)
+                                            except:
+                                                pass
+                                            return default
+                                    um63 = get_user_mtr('mtr_63mm', 6.0); um90 = get_user_mtr('mtr_90mm', 6.0); um110 = get_user_mtr('mtr_110mm', 6.0); um150 = get_user_mtr('mtr_150mm', 5.5)
+                                    tm63 = t63*um63 + te63; tm90 = t90*um90 + te90; tm110 = t110*um110 + te110; tm150 = t150*um150 + te150
                                     rows = [
-                                        {"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "unit": "6MTR", "total_mtr": tm63},
-                                        {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "unit": "6MTR", "total_mtr": tm90},
-                                        {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "unit": "6MTR", "total_mtr": tm110},
-                                        {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "unit": "5.5MTR", "total_mtr": tm150}
+                                        {"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "total_mtr": tm63},
+                                        {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "total_mtr": tm90},
+                                        {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "total_mtr": tm110},
+                                        {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "total_mtr": tm150}
                                     ]
                                     columns = [
                                         {"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"},
                                         {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"},
                                         {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"},
                                         {"name": "extra", "label": "Extra MTR", "field": "extra", "align": "center"},
-                                        {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"},
                                         {"name": "total_mtr", "label": "Total MTR", "field": "total_mtr", "align": "center"}
                                     ]
                                     ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-[11px] font-semibold")
