@@ -7,6 +7,7 @@ class AppUser(models.Model):
     default_report_title = models.CharField(max_length=255, default="Site Daily Progress Report")
     default_area_name = models.CharField(max_length=255, default="", blank=True)
     default_labour_name = models.CharField(max_length=255, default="", blank=True)
+    default_connection = models.CharField(max_length=100, default="", blank=True)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     def __str__(self):
@@ -40,11 +41,11 @@ class DailyReport(models.Model):
     report_date = models.DateField()
     area_name = models.CharField(max_length=100)
     labour_name = models.CharField(max_length=150, default="", blank=True)
+    connection = models.CharField(max_length=100, default="", blank=True)
     qty_63mm = models.FloatField(default=0)
     qty_90mm = models.FloatField(default=0)
     qty_110mm = models.FloatField(default=0)
     qty_150mm = models.FloatField(default=0)
-    # NEW Extra MTR feature
     extra_63mm = models.FloatField(default=0)
     extra_90mm = models.FloatField(default=0)
     extra_110mm = models.FloatField(default=0)
