@@ -1710,18 +1710,15 @@ def main_spa_page():
                                                                         except Exception as ce:
                                                                             print(f"Edit conn save fail: {ce}")
                                                                             import traceback; traceback.print_exc()
-                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} Conn Sum:{new_conn_sum}", type="positive", position="top", timeout=3000)
+                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} Conn Sum:{new_conn_sum}", type="positive", position="top", timeout=2000)
                                                                         dlg.close()
-                                                                        # Refresh the detail view to show updated data
+                                                                        # Instant refresh without Loading screen - only update detail view
                                                                         try:
+                                                                            # Rebuild detail view directly with updated report, no loading spinner
                                                                             build_filter_detail(rpt)
                                                                         except Exception as e:
                                                                             print(f"Refresh detail fail: {e}")
-                                                                        try:
-                                                                            # Also refresh filter list in background
-                                                                            show_filter()
-                                                                            show_filter_detail(rpt)
-                                                                        except:
+                                                                            # Fallback: just close, don't show loading
                                                                             pass
                                                                         load_table_data()
                                                                     except Exception as ex:
