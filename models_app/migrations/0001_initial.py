@@ -84,6 +84,20 @@ class Migration(migrations.Migration):
             ],
         ),
         migrations.CreateModel(
+            name='ConnectionEntry',
+            fields=[
+                ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
+                ('report_date', models.DateField()),
+                ('connection_no', models.CharField(blank=True, default='', max_length=100)),
+                ('name', models.CharField(blank=True, default='', max_length=150)),
+                ('mobile', models.CharField(blank=True, default='', max_length=20)),
+                ('area_name', models.CharField(blank=True, default='', max_length=100)),
+                ('created_at', models.DateTimeField(auto_now_add=True, null=True)),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='connection_entries', to='models_app.appuser')),
+                ('report', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.CASCADE, related_name='connections', to='models_app.dailyreport')),
+            ],
+        ),
+        migrations.CreateModel(
             name='PasswordResetToken',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
