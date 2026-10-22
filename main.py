@@ -1551,11 +1551,19 @@ def main_spa_page():
                                                                             ui.button("Delete", icon="delete", on_click=do_confirm_delete).props("rounded").classes("flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-[12px]")
                                                             
                                                             def refresh_edit_conn():
-                                                                edit_conn_container.clear()
+                                                                try:
+                                                                    edit_conn_container.clear()
+                                                                except Exception as e:
+                                                                    print(f"Clear fail: {e}")
                                                                 total = 0
                                                                 for it in edit_conn_state["items"]:
                                                                     try:
-                                                                        total += float(str(it.get('conn','0') or 0).strip() or 0)
+                                                                        # Try to parse as float, handle commas
+                                                                        c = str(it.get('conn','0') or 0).replace(',','').strip()
+                                                                        # Handle + in string like 45+... -> take first number
+                                                                        if '+' in c:
+                                                                            c = c.split('+')[0]
+                                                                        total += float(c or 0)
                                                                     except:
                                                                         pass
                                                                 with edit_conn_container:
@@ -1569,28 +1577,40 @@ def main_spa_page():
                                                                                     def make_edit(i=idx):
                                                                                         def edit_fn():
                                                                                             edit_target["idx"] = i
-                                                                                            ee_no.value = edit_conn_state["items"][i].get('conn','')
-                                                                                            ee_name.value = edit_conn_state["items"][i].get('name','')
-                                                                                            ee_mob.value = edit_conn_state["items"][i].get('mobile','')
                                                                                             try:
-                                                                                                ee_no.update(); ee_name.update(); ee_mob.update()
+                                                                                                ee_no.set_value(edit_conn_state["items"][i].get('conn',''))
+                                                                                                ee_name.set_value(edit_conn_state["items"][i].get('name',''))
+                                                                                                ee_mob.set_value(edit_conn_state["items"][i].get('mobile',''))
                                                                                             except:
-                                                                                                pass
+                                                                                                ee_no.value = edit_conn_state["items"][i].get('conn','')
+                                                                                                ee_name.value = edit_conn_state["items"][i].get('name','')
+                                                                                                ee_mob.value = edit_conn_state["items"][i].get('mobile','')
+                                                                                                try:
+                                                                                                    ee_no.update(); ee_name.update(); ee_mob.update()
+                                                                                                except:
+                                                                                                    pass
                                                                                             edit_conn_edit_dialog.open()
                                                                                         return edit_fn
                                                                                     def make_del(i=idx):
                                                                                         def del_fn():
                                                                                             del_target["idx"] = i
-                                                                                            del_preview = edit_conn_state["items"][i]
-                                                                                            del_msg.set_text(f"This data will be deleted: {del_preview.get('conn','')},{del_preview.get('name','')},{del_preview.get('mobile','')}")
+                                                                                            try:
+                                                                                                del_preview = edit_conn_state["items"][i]
+                                                                                                del_msg.set_text(f"This data will be deleted: {del_preview.get('conn','')},{del_preview.get('name','')},{del_preview.get('mobile','')}")
+                                                                                            except Exception as e:
+                                                                                                print(f"Del preview fail: {e}")
+                                                                                                del_msg.set_text("This data will be deleted")
                                                                                             del_confirm_dialog.open()
                                                                                         return del_fn
                                                                                     ui.button(icon="edit", on_click=make_edit()).props("flat round dense color=blue size=sm").classes("text-blue-600")
                                                                                     ui.button(icon="delete", on_click=make_del()).props("flat round dense color=red size=sm").classes("text-red-600")
-                                                                if total == int(total):
-                                                                    edit_conn_total.set_text(f"Total Connections Today: {int(total)}")
-                                                                else:
-                                                                    edit_conn_total.set_text(f"Total Connections Today: {total}")
+                                                                try:
+                                                                    if total == int(total):
+                                                                        edit_conn_total.set_text(f"Total Connections Today: {int(total)}")
+                                                                    else:
+                                                                        edit_conn_total.set_text(f"Total Connections Today: {total}")
+                                                                except:
+                                                                    pass
                                                             
                                                             refresh_edit_conn()
                                                             # Keep old e_connection for backward compat but hidden
@@ -1690,23 +1710,36 @@ def main_spa_page():
                                                                         # Save ConnectionEntry: delete old and recreate from edit_conn_state
                                                                         try:
                                                                             from models_app.models import ConnectionEntry
+                                                                            # Delete all old entries for this report and also by date for safety
                                                                             ConnectionEntry.objects.filter(report=rpt).delete()
-                                                                            # Also delete by date+user+area for old data without report link
-                                                                            if not edit_conn_state.get("items"):
+                                                                            try:
+                                                                                ConnectionEntry.objects.filter(user=rpt.user, report_date=rpt.report_date, area_name=rpt.area_name).exclude(report=rpt).delete()
+                                                                            except:
                                                                                 pass
-                                                                            else:
-                                                                                for it in edit_conn_state.get("items", []):
-                                                                                    ConnectionEntry.objects.create(
-                                                                                        user=rpt.user, report=rpt, report_date=new_date,
-                                                                                        connection_no=str(it.get('conn','')).strip(),
-                                                                                        name=str(it.get('name','')).strip(),
-                                                                                        mobile=str(it.get('mobile','')).strip(),
-                                                                                        area_name=new_area
-                                                                                    )
+                                                                            for it in edit_conn_state.get("items", []):
+                                                                                ConnectionEntry.objects.create(
+                                                                                    user=rpt.user, report=rpt, report_date=new_date,
+                                                                                    connection_no=str(it.get('conn','')).strip(),
+                                                                                    name=str(it.get('name','')).strip(),
+                                                                                    mobile=str(it.get('mobile','')).strip(),
+                                                                                    area_name=new_area
+                                                                                )
                                                                         except Exception as ce:
                                                                             print(f"Edit conn save fail: {ce}")
-                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} Conn Sum:{new_conn_sum}", type="positive", position="top", timeout=2000)
+                                                                            import traceback; traceback.print_exc()
+                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} Conn Sum:{new_conn_sum}", type="positive", position="top", timeout=3000)
                                                                         dlg.close()
+                                                                        # Refresh the detail view to show updated data
+                                                                        try:
+                                                                            build_filter_detail(rpt)
+                                                                        except Exception as e:
+                                                                            print(f"Refresh detail fail: {e}")
+                                                                        try:
+                                                                            # Also refresh filter list in background
+                                                                            show_filter()
+                                                                            show_filter_detail(rpt)
+                                                                        except:
+                                                                            pass
                                                                         load_table_data()
                                                                     except Exception as ex:
                                                                         import traceback; traceback.print_exc()
