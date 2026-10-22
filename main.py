@@ -1008,8 +1008,64 @@ def main_spa_page():
                                         ui.button("Next: Connection", icon="arrow_forward", on_click=lambda: show_section("conn")).props("rounded dense").classes("bg-blue-600 text-white text-[11px] font-bold")
                                 with conn_section:
                                     ui.label("Enter Connection").classes("text-[13px] font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border border-orange-200")
-                                    connection_input = ui.input(placeholder="Enter Connection Number", value="").props("outlined rounded color=orange input-class='text-[14px] font-bold'").classes("w-full bg-white font-bold shadow-sm mt-2")
-                                    ui.label("Connection number nakhvo (optional)").classes("text-[10px] text-slate-500 text-center w-full mt-1")
+                                    # State for connections list for this report
+                                    conn_list_state = {"items": []}
+                                    conn_list_container = ui.column().classes("w-full gap-1 mt-2")
+                                    conn_total_lbl = ui.label("Total Connections Today: 0").classes("text-[11px] font-extrabold text-green-700 bg-green-50 px-2 py-1 rounded-full text-center w-full border border-green-200 mt-1")
+                                    
+                                    def refresh_conn_list():
+                                        conn_list_container.clear()
+                                        with conn_list_container:
+                                            if not conn_list_state["items"]:
+                                                ui.label("No connections added yet - Click +Add").classes("text-[10px] text-slate-400 text-center w-full py-2")
+                                            else:
+                                                for idx, item in enumerate(conn_list_state["items"], 1):
+                                                    with ui.row().classes("w-full bg-white rounded-xl p-2 border border-orange-100 shadow-sm items-center justify-between"):
+                                                        ui.label(f"{idx}. {item['conn']},{item['name']},{item['mobile']}").classes("text-[11px] font-bold text-slate-800 flex-1")
+                                                        def make_delete(i=idx-1):
+                                                            def del_fn():
+                                                                conn_list_state["items"].pop(i)
+                                                                refresh_conn_list()
+                                                            return del_fn
+                                                        ui.button(icon="delete", on_click=make_delete()).props("flat round dense color=red").classes("text-red-500")
+                                        conn_total_lbl.set_text(f"Total Connections Today: {len(conn_list_state['items'])}")
+                                        try:
+                                            live_conn_lbl.set_text(f"Connection: {len(conn_list_state['items'])} Entries")
+                                            live_total_lbl.set_text(f"Total MTR: - | Conn: {len(conn_list_state['items'])}")
+                                        except:
+                                            pass
+                                    
+                                    with ui.dialog() as add_conn_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
+                                        ui.label("Add Connection").classes("text-[14px] font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border border-orange-200")
+                                        conn_no_input = ui.input("Connection", placeholder="Ex: 56").props("outlined dense").classes("w-full mt-2 font-bold")
+                                        conn_name_input = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
+                                        conn_mobile_input = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense type=tel").classes("w-full mt-1 font-bold")
+                                        with ui.row().classes("w-full justify-between gap-2 mt-4"):
+                                            ui.button("Cancel", on_click=add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold")
+                                            def do_add_conn():
+                                                cno = (conn_no_input.value or "").strip()
+                                                cname = (conn_name_input.value or "").strip()
+                                                cmob = (conn_mobile_input.value or "").strip()
+                                                if not cno:
+                                                    ui.notify("Connection No required!", type="warning", position="top")
+                                                    return
+                                                # At least connection no needed, name/mobile optional
+                                                conn_list_state["items"].append({"conn": cno, "name": cname, "mobile": cmob})
+                                                conn_no_input.value = ""; conn_name_input.value = ""; conn_mobile_input.value = ""
+                                                try:
+                                                    conn_no_input.update(); conn_name_input.update(); conn_mobile_input.update()
+                                                except:
+                                                    pass
+                                                add_conn_dialog.close()
+                                                refresh_conn_list()
+                                                ui.notify(f"✅ Added: {cno},{cname},{cmob}", type="positive", position="top", timeout=1500)
+                                            ui.button("Add", icon="add", on_click=do_add_conn).props("rounded").classes("flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold")
+                                    
+                                    with ui.row().classes("w-full justify-center mt-3"):
+                                        ui.button("+Add Connection", icon="add", on_click=add_conn_dialog.open).props("rounded").classes("w-full py-2.5 bg-gradient-to-r from-orange-500 to-amber-600 text-white font-extrabold text-[12px] shadow-lg")
+                                    
+                                    refresh_conn_list()
+                                    
                                     with ui.row().classes("w-full justify-between gap-2 mt-4"):
                                         ui.button("Back to Pipes", icon="arrow_back", on_click=lambda: show_section("pipe")).props("flat rounded dense").classes("text-[11px] bg-slate-100")
                                         ui.button("Next: Save", icon="arrow_forward", on_click=lambda: show_section("save")).props("rounded dense").classes("text-[11px] bg-blue-600 text-white font-bold")
@@ -1167,11 +1223,20 @@ def main_spa_page():
                                 selected_date = today_ist()
                             area_val = (area_input.value or "").strip()
                             labour_val = (labour_input.value or "").strip()
-                            conn_val = ""
+                            # New: connections list
+                            conn_items = []
                             try:
-                                conn_val = (connection_input.value or "").strip()
+                                conn_items = list(conn_list_state.get("items", []))
                             except:
-                                conn_val = ""
+                                conn_items = []
+                            conn_val = str(len(conn_items)) if conn_items else ""
+                            # For backward compatibility, store first entry as string if needed
+                            conn_detail_str = ""
+                            try:
+                                if conn_items:
+                                    conn_detail_str = "; ".join([f"{it.get('conn','')},{it.get('name','')},{it.get('mobile','')}" for it in conn_items])
+                            except:
+                                conn_detail_str = ""
                             if not area_val: ui.notify("Please Enter Area!", type="warning", position="top"); return
                             if area_val not in (CACHE["areas"].get(user.id, [])):
                                 SavedArea.objects.get_or_create(user=user, area_name=area_val)
@@ -1191,8 +1256,9 @@ def main_spa_page():
                                 user.default_report_title = current_title
                                 user.save(update_fields=['default_report_title'])
                                 CACHE["users"][user.email] = user
+                            report_obj = None
                             try:
-                                DailyReport.objects.create(
+                                report_obj = DailyReport.objects.create(
                                     user=user, report_title=current_title, report_date=selected_date, 
                                     area_name=area_val, labour_name=labour_val, connection=conn_val, 
                                     qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150,
@@ -1201,16 +1267,44 @@ def main_spa_page():
                                     total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, 
                                     price_sum=float(total_mtr_calc)
                                 )
+                                # Save individual connections
+                                try:
+                                    from models_app.models import ConnectionEntry
+                                    for it in conn_items:
+                                        ConnectionEntry.objects.create(
+                                            user=user, report=report_obj, report_date=selected_date,
+                                            connection_no=str(it.get('conn','')).strip(),
+                                            name=str(it.get('name','')).strip(),
+                                            mobile=str(it.get('mobile','')).strip(),
+                                            area_name=area_val
+                                        )
+                                except Exception as ce:
+                                    print(f"ConnectionEntry save fail: {ce}")
+                            
                             except Exception as ex:
                                 print(f"Save with extra failed: {ex}")
                                 try:
-                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, connection=conn_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, total_mtr=total_mtr_calc, price_sum=float(total_mtr_calc))
+                                    if report_obj is None:
+                                        report_obj = DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, labour_name=labour_val, connection=conn_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_pvc=q63+q90+q110, total_di=q150, total_qty=q63+q90+q110+q150, total_mtr=total_mtr_calc, price_sum=float(total_mtr_calc))
+                                        try:
+                                            from models_app.models import ConnectionEntry
+                                            for it in conn_items:
+                                                ConnectionEntry.objects.create(user=user, report=report_obj, report_date=selected_date, connection_no=str(it.get('conn','')).strip(), name=str(it.get('name','')).strip(), mobile=str(it.get('mobile','')).strip(), area_name=area_val)
+                                        except Exception as ce2:
+                                            print(f"Conn save fail2: {ce2}")
                                 except Exception as ex2:
-                                    DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_qty=q63+q90+q110+q150, price_sum=float(total_mtr_calc))
+                                    if report_obj is None:
+                                        report_obj = DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_qty=q63+q90+q110+q150, price_sum=float(total_mtr_calc))
+                                        try:
+                                            from models_app.models import ConnectionEntry
+                                            for it in conn_items:
+                                                ConnectionEntry.objects.create(user=user, report=report_obj, report_date=selected_date, connection_no=str(it.get('conn','')).strip(), name=str(it.get('name','')).strip(), mobile=str(it.get('mobile','')).strip(), area_name=area_val)
+                                        except:
+                                            pass
                             c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; 
                             try:
-                                connection_input.value = ""
-                                connection_input.update()
+                                conn_list_state["items"] = []
+                                refresh_conn_list()
                             except:
                                 pass
                             extra_state["63"]=0; extra_state["90"]=0; extra_state["110"]=0; extra_state["150"]=0;
@@ -1282,8 +1376,23 @@ def main_spa_page():
                                             ui.icon("info", size="2.2rem", color="red"); ui.label("No Data").classes("text-sm font-extrabold text-red-700 mt-1")
                                         return
                                     agg = qs.aggregate(t=Sum('total_qty')); grand_total = agg['t'] or 0
+                                    day_total_conn = 0
+                                    try:
+                                        from models_app.models import ConnectionEntry
+                                        day_total_conn = ConnectionEntry.objects.filter(user=user, report_date=qs.first().report_date if qs.exists() else None).count() if qs.exists() else 0
+                                        if day_total_conn == 0:
+                                            # fallback to sum of connection field
+                                            for r in qs:
+                                                try:
+                                                    cv = getattr(r, 'connection', '') or ''
+                                                    if cv:
+                                                        day_total_conn += int(float(str(cv).strip() or 0))
+                                                except:
+                                                    pass
+                                    except:
+                                        pass
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
-                                        ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {grand_total} Qty", color="green").classes("text-xs font-bold px-2 py-1")
+                                        ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {grand_total} Qty", color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Conn: {day_total_conn}", color="orange").classes("text-xs font-bold px-2 py-1")
                                     for report in qs[:50]:
                                         area_display = report.area_name or "No Area"
                                         with ui.card().classes("report-patti w-full rounded-2xl border-2 border-green-200 bg-gradient-to-r from-white to-green-50 p-0 overflow-hidden shadow-md"):
@@ -1424,16 +1533,42 @@ def main_spa_page():
                                                                 confirm_del_btn.on_click(make_del())
                                                 del_btn.on_click(del_dialog.open)
                             else:
-                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
+                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm'), ex63=Sum('extra_63mm'), ex90=Sum('extra_90mm'), ex110=Sum('extra_110mm'), ex150=Sum('extra_150mm'), tmtr=Sum('total_mtr')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; te63 = agg['ex63'] or 0; te90 = agg['ex90'] or 0; te110 = agg['ex110'] or 0; te150 = agg['ex150'] or 0; tmtr = agg['tmtr'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
+                                total_connections = 0
+                                try:
+                                    from models_app.models import ConnectionEntry
+                                    total_connections = ConnectionEntry.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month).count()
+                                    if total_connections == 0:
+                                        for r in base_qs:
+                                            cv = getattr(r, 'connection', '') or ''
+                                            try:
+                                                if cv:
+                                                    total_connections += float(str(cv).strip() or 0)
+                                            except:
+                                                pass
+                                except:
+                                    try:
+                                        for r in base_qs:
+                                            cv = getattr(r, 'connection', '') or ''
+                                            try:
+                                                if cv:
+                                                    total_connections += float(str(cv).strip() or 0)
+                                            except:
+                                                pass
+                                    except:
+                                        pass
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
-                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6MTR per PIPES"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "6MTR per PIPES"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "6MTR per PIPES"}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "unit": "5.5MTR"}]
-                                    columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
+                                    tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
+                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "unit": "6MTR per PIPES", "total_mtr": tm63}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "unit": "6MTR per PIPES", "total_mtr": tm90}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "unit": "6MTR per PIPES", "total_mtr": tm110}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "unit": "5.5MTR", "total_mtr": tm150}]
+                                    columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Qty", "field": "quantity", "align": "center"}, {"name": "extra", "label": "Extra", "field": "extra", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}, {"name": "total_mtr", "label": "Total MTR", "field": "total_mtr", "align": "center"}]
                                     ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
-                                    with ui.row().classes("w-full justify-center gap-2 mt-2"):
-                                        ui.badge(f"Total PVC Pipes: {t63+t90+t110} Qty", color="blue").classes("text-xs font-bold px-2 py-1")
-                                        ui.badge(f"Total DI Pipes: {t150} Qty", color="purple").classes("text-xs font-bold px-2 py-1")
+                                    with ui.row().classes("w-full justify-center gap-2 mt-2 flex-wrap"):
+                                        ui.badge(f"PVC: {t63+t90+t110} Qty | Extra:{te63+te90+te110} MTR | Total MTR:{tm63+tm90+tm110}", color="blue").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"DI: {t150} Qty | Extra:{te150} MTR | Total MTR:{tm150}", color="purple").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"Grand Extra: {te63+te90+te110+te150} MTR | Grand Total MTR: {tm63+tm90+tm110+tm150}", color="green").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"Total Connections: {total_connections}", color="orange").classes("text-[10px] font-bold px-2 py-1")
                                     with ui.dialog() as month_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                                         with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
                                             ui.label(f"📥 Download {period_text}").classes("font-extrabold text-xs text-white")
@@ -1486,9 +1621,28 @@ def main_spa_page():
                                 with ui.row().classes("w-full items-center gap-2"):
                                     ui.icon("engineering", color="blue"); ui.label(f"Labour: {get_q(report,'labour_name','') or 'No Labour'}").classes("font-bold text-sm text-blue-900")
                                 conn_det = get_q(report, 'connection', '')
-                                if conn_det:
-                                    with ui.row().classes("w-full items-center gap-2"):
-                                        ui.icon("power", color="orange"); ui.label(f"Connection: {conn_det}").classes("font-extrabold text-sm text-orange-800 bg-orange-100 px-2 py-1 rounded-full")
+                                conn_entries = []
+                                try:
+                                    from models_app.models import ConnectionEntry
+                                    conn_entries = list(ConnectionEntry.objects.filter(report=report).order_by('id'))
+                                    if not conn_entries:
+                                        # Try by date and user if report link not set (old data)
+                                        conn_entries = list(ConnectionEntry.objects.filter(user=report.user, report_date=report.report_date, area_name=report.area_name).order_by('id'))
+                                except Exception as e:
+                                    print(f"Conn fetch fail: {e}")
+                                    conn_entries = []
+                                if conn_det or conn_entries:
+                                    with ui.column().classes("w-full gap-1 bg-orange-50 p-2 rounded-xl border border-orange-200"):
+                                        with ui.row().classes("w-full items-center gap-2"):
+                                            ui.icon("power", color="orange")
+                                            total_c = len(conn_entries) if conn_entries else conn_det
+                                            ui.label(f"Total Connections: {total_c}").classes("font-extrabold text-sm text-orange-800")
+                                        # Show individual entries like 56,Mohanlal,9988779988
+                                        if conn_entries:
+                                            for ce in conn_entries:
+                                                ui.label(f"{ce.connection_no},{ce.name},{ce.mobile}").classes("text-[11px] font-bold text-slate-700 bg-white px-2 py-1 rounded-full border border-orange-100 w-full")
+                                        else:
+                                            ui.label(f"Connection: {conn_det}").classes("font-bold text-sm text-orange-800")
                         with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0 mb-4"):
                             # Header
                             with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
