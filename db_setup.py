@@ -9,14 +9,12 @@ def init_django():
     DATABASE_URL = os.getenv("DATABASE_URL", "")
 
     if DATABASE_URL:
-        # NEON - Postgres (Live)
         try:
             import dj_database_url
             DATABASES = {
                 'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
             }
         except ImportError:
-            # Fallback if dj-database-url not installed
             DATABASES = {
                 "default": {
                     "ENGINE": "django.db.backends.postgresql",
@@ -29,7 +27,6 @@ def init_django():
                 }
             }
     else:
-        # LOCAL - SQLite
         BASE_DIR = os.path.dirname(os.path.abspath(__file__))
         DATABASES = {
             "default": {
