@@ -14,15 +14,11 @@ try:
     HAS_LABOUR_MODEL = True
 except:
     HAS_LABOUR_MODEL = False
-from django.db import connection, close_old_connections
+from django.db import connection
 
 def ensure_neon_fast():
-    # SAFE VERSION - Works for both Postgres (Neon) and SQLite (Local) - Handles closed connection
+    # SAFE VERSION - Works for both Postgres (Neon) and SQLite (Local)
     try:
-        try:
-            close_old_connections()
-        except:
-            pass
         with connection.cursor() as cursor:
             # Check if tables exist - Compatible with both DBs
             try:
@@ -68,10 +64,6 @@ def ensure_neon_fast():
                     "ALTER TABLE models_app_appuser ADD COLUMN default_area_name VARCHAR(255) DEFAULT '';",
                     "ALTER TABLE models_app_appuser ADD COLUMN default_labour_name VARCHAR(255) DEFAULT '';",
                     "ALTER TABLE models_app_appuser ADD COLUMN default_connection VARCHAR(100) DEFAULT '';",
-                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_63mm REAL DEFAULT 6.0;",
-                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_90mm REAL DEFAULT 6.0;",
-                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_110mm REAL DEFAULT 6.0;",
-                    "ALTER TABLE models_app_appuser ADD COLUMN mtr_150mm REAL DEFAULT 5.5;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN qty_150mm REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_pvc REAL DEFAULT 0;",
                     "ALTER TABLE models_app_dailyreport ADD COLUMN total_di REAL DEFAULT 0;",
@@ -114,10 +106,11 @@ def ensure_neon_fast():
                 cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
                 cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_63mm DOUBLE PRECISION DEFAULT 6.0;")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_90mm DOUBLE PRECISION DEFAULT 6.0;")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_110mm DOUBLE PRECISION DEFAULT 6.0;")
-                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS mtr_150mm DOUBLE PRECISION DEFAULT 5.5;")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_area_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_labour_name VARCHAR(255) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_appuser ADD COLUMN IF NOT EXISTS default_connection VARCHAR(100) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS connection VARCHAR(100) DEFAULT '';")
+                cursor.execute("ALTER TABLE models_app_dailyreport ADD COLUMN IF NOT EXISTS labour_name VARCHAR(150) DEFAULT '';")
                 # SavedArea
                 cursor.execute("ALTER TABLE models_app_savedarea ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();")
                 # SavedLabour
@@ -375,7 +368,7 @@ def generate_month_excel(title, period_text, t63, t90, t110, t150=0, te63=0, te9
             for col in range(1,7): ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
         ws.append([]); ws.append(["", "Total PVC", f"{t63+t90+t110} Qty", f"{te63+te90+te110} MTR", "", f"{tm63+tm90+tm110} MTR"]); ws.append(["", "Total DI", f"{t150} Qty", f"{te150} MTR", "", f"{tm150} MTR"]); ws.append(["", "Grand Extra", f"{te63+te90+te110+te150} MTR", "", "", f"{tm63+tm90+tm110+tm150} MTR"]); ws.append(["", "Grand Total", f"{t63+t90+t110+t150} Qty", "", "", ""]); ws.append(["", "Total Connections", f"{total_connections}", "", "", ""])
         for rr in range(ws.max_row-4, ws.max_row+1):
-            for col in range(1,6): 
+            for col in range(1,6):
                 try:
                     ws.cell(row=rr, column=col).font = Font(bold=True); ws.cell(row=rr, column=col).alignment = Alignment(horizontal='center'); ws.cell(row=rr, column=col).border = thin
                 except:
@@ -387,8 +380,6 @@ def generate_month_excel(title, period_text, t63, t90, t110, t150=0, te63=0, te9
         return generate_month_csv(title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
 
 def generate_month_pdf(title, period_text, t63, t90, t110, t150=0, te63=0, te90=0, te110=0, te150=0, total_connections=0):
-
-
     try:
         from reportlab.lib.pagesizes import A4
         from reportlab.pdfgen import canvas
@@ -428,6 +419,7 @@ def generate_month_pdf(title, period_text, t63, t90, t110, t150=0, te63=0, te90=
         print(f"Month PDF error: {e}")
         import traceback; traceback.print_exc()
         return generate_month_csv(title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+
 
 
 ui.add_css("""
@@ -698,25 +690,12 @@ def main_spa_page():
                             try:
                                 def update_pwd():
                                     try:
-                                        close_old_connections()
-                                    except:
-                                        pass
-                                    try:
                                         u = AppUser.objects.get(email=email)
                                     except AppUser.DoesNotExist:
                                         try:
                                             u = AppUser.objects.get(username=email)
                                         except AppUser.DoesNotExist:
                                             return None
-                                    except Exception as db_err:
-                                        if "closed" in str(db_err).lower():
-                                            close_old_connections()
-                                            try:
-                                                u = AppUser.objects.get(email=email)
-                                            except:
-                                                u = AppUser.objects.get(username=email)
-                                        else:
-                                            raise db_err
                                     u.password = make_password(p1)
                                     u.save(update_fields=['password'])
                                     return u
@@ -738,38 +717,7 @@ def main_spa_page():
                                 await asyncio.sleep(1.2)
                                 show_login()
                             except Exception as e:
-                                err = str(e).lower()
-                                if "closed" in err:
-                                    reset_status_label.set_text("⏳ Connection closed, retrying...")
-                                    try:
-                                        close_old_connections()
-                                        await asyncio.sleep(0.3)
-                                        def retry_pwd():
-                                            close_old_connections()
-                                            try:
-                                                u = AppUser.objects.get(email=email)
-                                            except:
-                                                u = AppUser.objects.get(username=email)
-                                            u.password = make_password(p1)
-                                            u.save(update_fields=['password'])
-                                            return u
-                                        user = await run.io_bound(retry_pwd)
-                                        CACHE["users"].pop(email, None)
-                                        CACHE["users"][user.email] = user
-                                        pwd_key = hashlib.sha256(f"{user.email}:{p1}".encode()).hexdigest()
-                                        CACHE["pwd_verified"][pwd_key] = user.id
-                                        app.storage.user["saved_email"] = user.email
-                                        app.storage.user["saved_password"] = p1
-                                        reset_status_label.set_text("✅ Password changed! Going to login...")
-                                        ui.notify("✅ Password changed!", type="positive")
-                                        await asyncio.sleep(1.2)
-                                        show_login()
-                                        return
-                                    except Exception as e2:
-                                        reset_status_label.set_text(f"❌ Retry failed: {e2}")
-                                        return
                                 reset_status_label.set_text(f"❌ Error: {e}")
-                                print(f"Reset error: {e}")
 
                         async def verify_id():
                             email = (forgot_email.value or "").strip()
@@ -780,28 +728,12 @@ def main_spa_page():
                             try:
                                 def get_user():
                                     try:
-                                        close_old_connections()
-                                    except:
-                                        pass
-                                    try:
                                         return AppUser.objects.get(email=email)
                                     except AppUser.DoesNotExist:
                                         try:
                                             return AppUser.objects.get(username=email)
                                         except AppUser.DoesNotExist:
                                             return None
-                                    except Exception as db_err:
-                                        # Handle closed connection - retry once
-                                        if "closed" in str(db_err).lower() or "connection" in str(db_err).lower():
-                                            try:
-                                                close_old_connections()
-                                                try:
-                                                    return AppUser.objects.get(email=email)
-                                                except:
-                                                    return AppUser.objects.get(username=email)
-                                            except:
-                                                raise db_err
-                                        raise db_err
                                 user = await run.io_bound(get_user)
                                 if not user:
                                     forgot_status.set_text("❌ ID not registered! Check Email/Username")
@@ -817,208 +749,21 @@ def main_spa_page():
                                     reset_status_label = ui.label("").classes("text-xs font-bold text-center w-full")
                                     ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=lambda: do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, email)).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg mt-1")
                             except Exception as e:
-                                err_msg = str(e)
-                                if "closed" in err_msg.lower() or "connection" in err_msg.lower():
-                                    forgot_status.set_text("⏳ Connection reset, retrying...")
-                                    try:
-                                        close_old_connections()
-                                        await asyncio.sleep(0.5)
-                                        # Retry once
-                                        def get_user_retry():
-                                            try:
-                                                close_old_connections()
-                                            except:
-                                                pass
-                                            try:
-                                                return AppUser.objects.get(email=email)
-                                            except:
-                                                try:
-                                                    return AppUser.objects.get(username=email)
-                                                except:
-                                                    return None
-                                        user = await run.io_bound(get_user_retry)
-                                        if user:
-                                            forgot_status.set_text(f"✅ Found: {user.username} ({user.email})")
-                                            reset_area.clear()
-                                            with reset_area:
-                                                ui.separator().classes("my-2")
-                                                ui.label("✅ ID Verified! New password nakho:").classes("text-[13px] font-extrabold text-green-700 bg-green-50 px-3 py-1.5 rounded-full text-center w-full")
-                                                new_pwd_input = ui.input("New Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full font-bold")
-                                                re_new_pwd_input = ui.input("Retype Password (6 digits)", placeholder="Ex: 123456", password=True, password_toggle_button=True).props("outlined rounded dense maxlength=6 color=green").classes("w-full font-bold")
-                                                reset_status_label = ui.label("").classes("text-xs font-bold text-center w-full")
-                                                ui.button("Change Password - Confirm (6-digit)", icon="check_circle", on_click=lambda: do_direct_reset(new_pwd_input, re_new_pwd_input, reset_status_label, email)).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-emerald-600 to-green-600 text-white font-bold shadow-lg mt-1")
-                                            return
-                                    except Exception as e2:
-                                        forgot_status.set_text(f"❌ Retry failed: {e2}")
-                                        return
                                 forgot_status.set_text(f"❌ Error: {e}")
-                                print(f"Forgot verify error: {e}")
                         
                         ui.button("Verify ID & Reset Direct", icon="verified_user", on_click=verify_id).props("rounded no-caps").classes("w-full py-2.5 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold shadow-lg mt-2")
                         ui.button("Back to Login", icon="arrow_back", on_click=show_login).props("flat rounded no-caps").classes("w-full text-blue-600 font-bold text-sm mt-1")
 
 
 
-        def build_home():
-            home_view.clear()
-            user = state["user"]
-            if not user:
-                show_login()
-                return
-            try:
-                fresh_user = AppUser.objects.get(id=user.id)
-                CACHE["users"][fresh_user.email] = fresh_user
-                state["user"] = fresh_user
-                user = fresh_user
-            except Exception:
-                pass
-            with home_view:
-                with ui.column().classes("w-full max-w-md items-center gap-0"):
-                    with ui.card().classes("w-full rounded-2xl shadow-xl bg-white p-1.5 border-2 border-green-200"):
-                        # COMPACT TOP BAR INSIDE BOX - Back + Date + Profile in one line - No extra space
-                        with ui.row().classes("w-full justify-between items-center mb-1 px-1 py-0.5 bg-slate-50 rounded-full border"):
-                            ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-[11px] shadow-sm")
-                            today_str = today_ist().isoformat()
-                            with ui.row().classes("date-pill-compact items-center justify-center"):
-                                home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-[11px] font-bold")
-                            with ui.button(icon="account_circle").props("round unelevated dense").classes("bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"):
-                                with ui.menu().classes("rounded-xl shadow-xl border border-purple-200"):
-                                    with ui.menu_item(on_click=show_profile).classes("hover:bg-purple-50 font-semibold"):
-                                        with ui.row().classes("items-center gap-2"): ui.icon("person", color="purple"); ui.label("Profile")
-                                    ui.separator()
-                                    with ui.menu_item(on_click=show_filter).classes("hover:bg-purple-50 font-semibold"):
-                                        with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
+
                         
-                        with ui.row().classes("w-full justify-center mb-1 mt-0.5"):
-                            title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-[13px] text-slate-900'").classes("w-full px-2 py-0.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
-                            def save_title_persist():
-                                try:
-                                    new_title = (title_input.value or "").strip()
-                                    if not new_title:
-                                        return
-                                    if new_title == user.default_report_title:
-                                        return
-                                    user.default_report_title = new_title
-                                    user.save(update_fields=['default_report_title'])
-                                    CACHE["users"][user.email] = user
-                                    state["user"] = user
-                                    ui.notify(f"✅ Title Saved", type="positive", position="top", timeout=2000)
-                                except Exception as ex:
-                                    print(f"Title save fail: {ex}")
-                            # FIXED: Only save on blur or Enter, not on every keystroke - no page reload
-                            title_input.on("blur", lambda _: save_title_persist())
-                            title_input.on("keydown.enter", lambda _: save_title_persist())
-                        def get_areas():
-                            if user.id in CACHE["areas"]:
-                                return CACHE["areas"][user.id]
-                            areas = list(SavedArea.objects.filter(user=user).order_by("-id").values_list("area_name", flat=True)[:100])
-                            CACHE["areas"][user.id] = areas
-                            return areas
-                        def get_labours():
-                            if "labours" not in CACHE:
-                                CACHE["labours"] = {}
-                            if user.id in CACHE["labours"]:
-                                return CACHE["labours"][user.id]
-                            if HAS_LABOUR_MODEL:
-                                try:
-                                    labours = list(SavedLabour.objects.filter(user=user).order_by("-id").values_list("labour_name", flat=True)[:100])
-                                except:
-                                    labours = []
-                            else:
-                                labours = []
-                            CACHE["labours"][user.id] = labours
-                            return labours
-                        saved_areas = get_areas()
-                        saved_labours = get_labours()
-                        # Area + Labour Name - PERSISTENT EXACTLY LIKE SAVARKUDLA NAGARPALIKA TITLE
-                        # Once you type kanjibhai, it stays kanjibhai for 10 logins until you change it - saves to DB + storage
-                        def get_default_area():
-                            try:
-                                # 1. Storage (fast)
-                                stored = app.storage.user.get("default_area_name", "")
-                                if stored:
-                                    return stored
-                                # 2. DB (cross-device, like title)
-                                if hasattr(user, 'default_area_name') and user.default_area_name:
-                                    return user.default_area_name
-                                # 3. Last report
-                                last = DailyReport.objects.filter(user=user).order_by("-id").first()
-                                if last and last.area_name:
-                                    return last.area_name
-                            except:
-                                pass
-                            return ""
-                        def get_default_labour():
-                            try:
-                                stored = app.storage.user.get("default_labour_name", "")
-                                if stored:
-                                    return stored
-                                if hasattr(user, 'default_labour_name') and user.default_labour_name:
-                                    return user.default_labour_name
-                                last = DailyReport.objects.filter(user=user).order_by("-id").first()
-                                if last and last.labour_name:
-                                    return last.labour_name
-                            except:
-                                pass
-                            return ""
-                        def save_default_area():
-                            try:
-                                val = (area_input.value or "").strip()
-                                if not val:
-                                    return
-                                # Save to storage (instant)
-                                app.storage.user["default_area_name"] = val
-                                # Save to DB (persistent like title) - cross device
-                                if val != getattr(user, 'default_area_name', ''):
-                                    try:
-                                        user.default_area_name = val
-                                        user.save(update_fields=['default_area_name'])
-                                        CACHE["users"][user.email] = user
-                                    except:
-                                        pass
-                            except Exception as e:
-                                print(f"Area save fail: {e}")
-                        def save_default_labour():
-                            try:
-                                val = (labour_input.value or "").strip()
-                                if not val:
-                                    return
-                                app.storage.user["default_labour_name"] = val
-                                if val != getattr(user, 'default_labour_name', ''):
-                                    try:
-                                        user.default_labour_name = val
-                                        user.save(update_fields=['default_labour_name'])
-                                        CACHE["users"][user.email] = user
-                                    except:
-                                        pass
-                            except Exception as e:
-                                print(f"Labour save fail: {e}")
-                        with ui.row().classes("w-full mb-1 gap-2"):
-                            with ui.column().classes("flex-1 gap-0.5"):
-                                ui.label("Enter Area *").classes("text-[12px] font-extrabold text-green-700 ml-1")
-                                area_input = ui.input(placeholder="Type area...", value=get_default_area()).props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
-                                area_input.on("blur", lambda _: save_default_area())
-                                area_input.on("keydown.enter", lambda _: save_default_area())
-                            with ui.column().classes("flex-1 gap-0.5"):
-                                ui.label("Enter Labour Name").classes("text-[12px] font-extrabold text-blue-700 ml-1")
-                                labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
-                                labour_input.on("blur", lambda _: save_default_labour())
-                                labour_input.on("keydown.enter", lambda _: save_default_labour())
-                        # Fixed Pipe MTR - by default 6,6,6,5.5 as requested
-                        pipe_mtr_state = {"63": 6.0, "90": 6.0, "110": 6.0, "150": 5.5}
-                        
-                        with ui.row().classes("w-full justify-between items-center gap-2 mb-1"):
-                            # Left: PIPE MTR LOGIC Button
+                        with ui.row().classes("w-full justify-center items-center gap-2 mb-2 mt-1"):
                             pipe_logic_btn = ui.button("PIPE MTR LOGIC", icon="info").props("dense rounded outline color=purple").classes("text-[10px] font-bold px-2 py-1 border-purple-300")
-                            # Center: Pipeline Progress - centered
                             with ui.row().classes("items-center gap-1"):
                                 ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800 text-center")
-                            # Right: Connection
-                            with ui.column().classes("gap-0"):
-                                ui.label("Connection").classes("text-[10px] font-bold text-orange-700 ml-1")
-                                connection_input = ui.input(placeholder="Connection", value="").props("outlined rounded dense color=orange input-class='text-[12px]'").classes("w-28 bg-orange-50 font-bold text-[12px] shadow-sm border border-orange-200")
                         
-                        # Dialog for PIPE MTR LOGIC - View only
+                        # Dialog for PIPE MTR LOGIC
                         with ui.dialog() as pipe_logic_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
                             with ui.column().classes("w-full p-0 gap-0"):
                                 with ui.row().classes("w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-3 items-center justify-between text-white"):
@@ -1027,13 +772,10 @@ def main_spa_page():
                                 with ui.column().classes("w-full p-3 gap-2 bg-white"):
                                     ui.label("Per Pipe MTR Details - View Only").classes("text-[11px] font-bold text-purple-700 text-center w-full bg-purple-50 px-2 py-1 rounded-full")
                                     with ui.column().classes("w-full rounded-xl overflow-hidden border-2 border-indigo-900 shadow-md mt-1"):
-                                        # Header - 63MM, 90MM, 110MM, 150MM
                                         with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-extrabold text-center"):
                                             ui.label("63MM").classes("py-2 text-[11px]"); ui.label("90MM").classes("py-2 text-[11px] border-x border-white/30"); ui.label("110MM").classes("py-2 text-[11px] border-r border-white/30"); ui.label("150MM").classes("py-2 text-[11px]")
-                                        # Label - per pipe MTR - center ma badha textview ni upar
                                         with ui.grid(columns=4).classes("w-full bg-slate-100 text-center border-y border-indigo-900"):
                                             ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600"); ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600 border-x border-gray-300"); ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600 border-r border-gray-300"); ui.label("per pipe MTR").classes("py-1 text-[9px] font-bold text-slate-600")
-                                        # Values - 6MTR etc - individual MTR lakhvana textview ma
                                         with ui.grid(columns=4).classes("w-full bg-white text-center"):
                                             with ui.column().classes("w-full p-1"):
                                                 ui.input(value="6MTR").props("outlined dense readonly input-class='text-center font-extrabold text-[13px]'").classes("w-full bg-green-50")
@@ -1049,51 +791,110 @@ def main_spa_page():
                                     ui.button("Close", icon="close", on_click=pipe_logic_dialog.close).props("rounded").classes("w-full mt-2 bg-slate-100 text-slate-700 font-bold text-[12px]")
                         pipe_logic_btn.on_click(pipe_logic_dialog.open)
 
-                        # STATE for extra MTR - NEW FEATURE
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
                         
-                        with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
-                            with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
-                                ui.label("63MM PVC").classes("py-2 text-[13px]"); ui.label("90MM PVC").classes("py-2 text-[13px] border-x-2 border-indigo-900"); ui.label("110MM PVC").classes("py-2 text-[13px] border-r-2 border-indigo-900"); ui.label("150MM DI").classes("py-2 text-[13px]")
-                            with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
-                                with ui.column().classes("p-1 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
-                                with ui.column().classes("p-1 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
-                                with ui.column().classes("p-1 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
-                                with ui.column().classes("p-1 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[15px]' step=0.1").classes("w-full h-10")
-                            
-                            # +Add MTR Buttons Row - NEW FEATURE
-                            with ui.grid(columns=4).classes("w-full bg-white text-center items-center border-t border-indigo-900"):
-                                with ui.column().classes("p-0.5 items-center w-full"):
-                                    add_63_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
-                                with ui.column().classes("p-0.5 items-center border-x-2 border-indigo-900 w-full"):
-                                    add_90_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
-                                with ui.column().classes("p-0.5 items-center border-r-2 border-indigo-900 w-full"):
-                                    add_110_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
-                                with ui.column().classes("p-0.5 items-center w-full"):
-                                    add_150_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[10px] bg-red-50 text-red-600 font-bold border border-red-200 px-1.5 py-0.5 rounded-full")
-                            
-
-                            # MTR Display Row - Count*6 + Extra
-                            with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
-                                m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px]")
-                                m90_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px] border-x-2 border-indigo-900")
-                                m110_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px] border-r-2 border-indigo-900")
-                                m150_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[13px]")
-                            # Extra MTR Display Row
-                            with ui.grid(columns=4).classes("w-full bg-orange-50 text-center border-b border-indigo-900 items-center"):
-                                e63_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px]")
-                                e90_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px] border-x-2 border-indigo-900")
-                                e110_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px] border-r-2 border-indigo-900")
-                                e150_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[11px]")
-                            with ui.column().classes("w-full gap-0"):
-                                with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
-                                    pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-2.5 font-bold text-green-300 text-[14px] border-b border-white/10")
-                                with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-center"):
-                                    di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2.5 font-bold text-cyan-300 text-[14px]")
-                                with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
-                                    mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-3 font-bold text-yellow-200 text-[14px]")
+                        # +New Report Button - Center, big space
+                        with ui.column().classes("w-full items-center justify-center py-10 gap-3 mt-1 bg-slate-50 rounded-2xl border-2 border-dashed border-green-200"):
+                            ui.icon("assignment_add", size="2.5rem", color="green")
+                            ui.label("No active report - Start new").classes("text-[11px] font-bold text-slate-500")
+                            new_report_btn = ui.button("+New Report", icon="add").props("rounded").classes("w-3/5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-[14px] shadow-xl")
                         
-                        # Dialogs for Extra MTR - NEW
+                        # New Report Dialog with 3-icon navigation
+                        with ui.dialog() as new_report_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md shadow-2xl overflow-hidden"):
+                            with ui.column().classes("w-full p-0 gap-0"):
+                                with ui.row().classes("w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 p-3 items-center justify-between text-white"):
+                                    ui.label("📝 New Report").classes("font-extrabold text-[14px] text-white")
+                                    ui.button(icon="close", on_click=new_report_dialog.close).props("flat round dense color=white").classes("text-white")
+                                with ui.row().classes("w-full justify-around items-center bg-slate-50 p-3 border-b-2 border-indigo-100"):
+                                    nav_pipe_btn = ui.button(icon="pie_chart").props("round dense").classes("bg-blue-600 text-white shadow-lg w-12 h-12")
+                                    nav_conn_btn = ui.button(icon="link").props("round dense").classes("bg-slate-200 text-slate-600 w-12 h-12")
+                                    nav_save_btn = ui.button(icon="save").props("round dense").classes("bg-slate-200 text-slate-600 w-12 h-12")
+                                
+                                pipe_section = ui.column().classes("w-full p-3 gap-0")
+                                conn_section = ui.column().classes("w-full p-4 gap-3 hidden")
+                                save_section = ui.column().classes("w-full p-4 gap-3 hidden")
+                                
+                                def show_section(name):
+                                    pipe_section.classes(add="hidden"); conn_section.classes(add="hidden"); save_section.classes(add="hidden")
+                                    nav_pipe_btn.classes(replace="bg-blue-600 text-white shadow-lg", add="bg-slate-200 text-slate-600")
+                                    nav_conn_btn.classes(replace="bg-blue-600 text-white shadow-lg", add="bg-slate-200 text-slate-600")
+                                    nav_save_btn.classes(replace="bg-green-600 text-white shadow-lg", add="bg-slate-200 text-slate-600")
+                                    nav_pipe_btn.classes(replace="bg-green-600 text-white shadow-lg", add="bg-slate-200 text-slate-600")
+                                    nav_conn_btn.classes(replace="bg-green-600 text-white shadow-lg", add="bg-slate-200 text-slate-600")
+                                    nav_save_btn.classes(replace="bg-blue-600 text-white shadow-lg", add="bg-slate-200 text-slate-600")
+                                    if name == "pipe":
+                                        pipe_section.classes(remove="hidden")
+                                        nav_pipe_btn.classes(replace="bg-slate-200 text-slate-600", add="bg-blue-600 text-white shadow-lg")
+                                    elif name == "conn":
+                                        conn_section.classes(remove="hidden")
+                                        nav_conn_btn.classes(replace="bg-slate-200 text-slate-600", add="bg-blue-600 text-white shadow-lg")
+                                    elif name == "save":
+                                        save_section.classes(remove="hidden")
+                                        nav_save_btn.classes(replace="bg-slate-200 text-slate-600", add="bg-green-600 text-white shadow-lg")
+                                
+                                nav_pipe_btn.on_click(lambda: show_section("pipe"))
+                                nav_conn_btn.on_click(lambda: show_section("conn"))
+                                nav_save_btn.on_click(lambda: show_section("save"))
+                                
+                                with pipe_section:
+                                    with ui.column().classes("w-full rounded-2xl overflow-hidden shadow-lg border-2 border-indigo-900 gap-0"):
+                                        with ui.grid(columns=4).classes("w-full bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 text-white font-extrabold text-center"):
+                                            ui.label("63MM PVC").classes("py-2 text-[10px]"); ui.label("90MM PVC").classes("py-2 text-[10px] border-x border-white/30"); ui.label("110MM PVC").classes("py-2 text-[10px] border-r border-white/30"); ui.label("150MM DI").classes("py-2 text-[10px]")
+                                        with ui.grid(columns=4).classes("w-full bg-white text-center items-center"):
+                                            with ui.column().classes("p-1 items-center w-full"): c63 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full h-10")
+                                            with ui.column().classes("p-1 items-center border-x-2 border-indigo-900 w-full"): c90 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full h-10")
+                                            with ui.column().classes("p-1 items-center border-r-2 border-indigo-900 w-full"): c110 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full h-10")
+                                            with ui.column().classes("p-1 items-center w-full"): c150 = ui.input(placeholder="Count").props("type=number outlined dense color=green input-class='text-center font-bold text-[13px]' step=0.1").classes("w-full h-10")
+                                        with ui.grid(columns=4).classes("w-full bg-white text-center items-center border-t border-indigo-900"):
+                                            with ui.column().classes("p-0.5 items-center w-full"):
+                                                add_63_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0.5 rounded-full")
+                                            with ui.column().classes("p-0.5 items-center border-x-2 border-indigo-900 w-full"):
+                                                add_90_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0.5 rounded-full")
+                                            with ui.column().classes("p-0.5 items-center border-r-2 border-indigo-900 w-full"):
+                                                add_110_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0.5 rounded-full")
+                                            with ui.column().classes("p-0.5 items-center w-full"):
+                                                add_150_btn = ui.button("+ADD MTR").props("flat dense").classes("text-[9px] bg-red-50 text-red-600 font-bold border border-red-200 px-1 py-0.5 rounded-full")
+                                        with ui.grid(columns=4).classes("w-full bg-amber-50 text-center border-b-2 border-indigo-900 items-center"):
+                                            m63_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[11px]")
+                                            m90_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[11px] border-x-2 border-indigo-900")
+                                            m110_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[11px] border-r-2 border-indigo-900")
+                                            m150_lbl = ui.label("0 MTR").classes("py-2 font-extrabold text-amber-800 text-[11px]")
+                                        with ui.grid(columns=4).classes("w-full bg-orange-50 text-center border-b border-indigo-900 items-center"):
+                                            e63_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[10px]")
+                                            e90_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[10px] border-x-2 border-indigo-900")
+                                            e110_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[10px] border-r-2 border-indigo-900")
+                                            e150_lbl = ui.label("").classes("py-1 font-bold text-orange-600 text-[10px]")
+                                        with ui.column().classes("w-full gap-0"):
+                                            with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-center"):
+                                                pvc_total_lbl = ui.label("Total PVC Pipes : 0 Quantity").classes("py-2 font-bold text-green-300 text-[12px] border-b border-white/10")
+                                            with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-slate-800 via-slate-900 to-slate-800 text-center"):
+                                                di_total_lbl = ui.label("Total DI Pipes : 0 Quantity").classes("py-2 font-bold text-cyan-300 text-[12px]")
+                                            with ui.grid(columns=1).classes("w-full bg-gradient-to-r from-amber-900 to-yellow-900 text-center"):
+                                                mtr_total_lbl = ui.label("Total MTR: 0 MTR").classes("py-2.5 font-bold text-yellow-200 text-[12px]")
+                                    with ui.row().classes("w-full justify-end mt-2"):
+                                        ui.button("Next: Connection", icon="arrow_forward", on_click=lambda: show_section("conn")).props("rounded dense").classes("bg-blue-600 text-white text-[11px] font-bold")
+                                with conn_section:
+                                    ui.label("Enter Connection").classes("text-[13px] font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border border-orange-200")
+                                    connection_input = ui.input(placeholder="Enter Connection Number", value="").props("outlined rounded color=orange input-class='text-[14px] font-bold'").classes("w-full bg-white font-bold shadow-sm mt-2")
+                                    ui.label("Connection number nakhvo (optional)").classes("text-[10px] text-slate-500 text-center w-full mt-1")
+                                    with ui.row().classes("w-full justify-between gap-2 mt-4"):
+                                        ui.button("Back to Pipes", icon="arrow_back", on_click=lambda: show_section("pipe")).props("flat rounded dense").classes("text-[11px] bg-slate-100")
+                                        ui.button("Next: Save", icon="arrow_forward", on_click=lambda: show_section("save")).props("rounded dense").classes("text-[11px] bg-blue-600 text-white font-bold")
+                                with save_section:
+                                    ui.label("Save Report").classes("text-[13px] font-extrabold text-green-700 w-full text-center bg-green-50 px-3 py-2 rounded-full border border-green-200")
+                                    with ui.column().classes("w-full bg-slate-50 rounded-xl p-3 gap-1 mt-2 border"):
+                                        live_area_lbl = ui.label("Area: -").classes("text-[11px] font-bold text-slate-700")
+                                        live_labour_lbl = ui.label("Labour: -").classes("text-[11px] font-bold text-slate-700")
+                                        live_conn_lbl = ui.label("Connection: -").classes("text-[11px] font-bold text-orange-700")
+                                        live_total_lbl = ui.label("Total MTR: 0 MTR").classes("text-[12px] font-extrabold text-green-700 mt-1")
+                                    save_btn = ui.button("⚡ Save", icon="save").props("rounded").classes("w-full mt-3 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-extrabold text-[13px] shadow-lg")
+                                    with ui.row().classes("w-full justify-between gap-2 mt-2"):
+                                        ui.button("Back to Connection", icon="arrow_back", on_click=lambda: show_section("conn")).props("flat rounded dense").classes("text-[11px] bg-slate-100")
+                                        ui.button("Back to Pipes", icon="pie_chart", on_click=lambda: show_section("pipe")).props("flat rounded dense").classes("text-[11px] bg-slate-100")
+                        
+                        new_report_btn.on_click(new_report_dialog.open)
+                        
+                        # Dialogs for Extra MTR
                         with ui.dialog() as extra_63_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
                             ui.label("Enter Extra Meter for 63MM Pipe").classes("text-sm font-extrabold text-slate-800 text-center w-full")
                             extra_63_input = ui.input(placeholder="Ex: 5", value="").props("type=number outlined dense autofocus").classes("w-full font-bold text-center")
@@ -1158,7 +959,6 @@ def main_spa_page():
                                         ui.notify("Enter valid number", type="warning")
                                 ui.button("Add", icon="check", on_click=set_extra_150).props("rounded").classes("flex-1 bg-red-500 text-white font-bold")
                         
-                        # Connect buttons to dialogs
                         add_63_btn.on_click(extra_63_dialog.open)
                         add_90_btn.on_click(extra_90_dialog.open)
                         add_110_btn.on_click(extra_110_dialog.open)
@@ -1168,7 +968,6 @@ def main_spa_page():
                                 if val in (None, ""):
                                     return 0
                                 s = str(val).strip()
-                                # Reject negative only, allow decimal like 3.2, 9.9
                                 if s.startswith("-"):
                                     return 0
                                 v = float(s)
@@ -1177,20 +976,7 @@ def main_spa_page():
                                 return v
                             except:
                                 return 0
-                        def is_valid_int(val):
-                            # Only integer allowed: 4,7,48,8 - not 3.2
-                            try:
-                                if val in (None, ""):
-                                    return True
-                                s = str(val).strip()
-                                if "." in s:
-                                    return False
-                                int(s)
-                                return True
-                            except:
-                                return False
                         def update_live_preview():
-                            # DYNAMIC: Count * Per Pipe MTR + Extra MTR
                             def fast_parse(v):
                                 try:
                                     if not v: return 0
@@ -1218,17 +1004,22 @@ def main_spa_page():
                             e90_lbl.set_text(f"+{ex90} Extra" if ex90>0 else "")
                             e110_lbl.set_text(f"+{ex110} Extra" if ex110>0 else "")
                             e150_lbl.set_text(f"+{ex150} Extra" if ex150>0 else "")
-                            add_63_btn.set_text(f"+{ex63} MTR" if ex63>0 else "+Add MTR")
-                            add_90_btn.set_text(f"+{ex90} MTR" if ex90>0 else "+Add MTR")
-                            add_110_btn.set_text(f"+{ex110} MTR" if ex110>0 else "+Add MTR")
-                            add_150_btn.set_text(f"+{ex150} MTR" if ex150>0 else "+Add MTR")
+                            add_63_btn.set_text(f"+{ex63} MTR" if ex63>0 else "+ADD MTR")
+                            add_90_btn.set_text(f"+{ex90} MTR" if ex90>0 else "+ADD MTR")
+                            add_110_btn.set_text(f"+{ex110} MTR" if ex110>0 else "+ADD MTR")
+                            add_150_btn.set_text(f"+{ex150} MTR" if ex150>0 else "+ADD MTR")
+                            try:
+                                live_area_lbl.set_text(f"Area: {(area_input.value or '').strip() or '-'}")
+                                live_labour_lbl.set_text(f"Labour: {(labour_input.value or '').strip() or '-'}")
+                                live_conn_lbl.set_text(f"Connection: {(connection_input.value or '').strip() or '-'}")
+                                live_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
+                            except:
+                                pass
                         
-                        # PARALLEL LISTENERS - All 4 count inputs trigger same instant calc - Backend parallel
                         c63.on_value_change(lambda _: update_live_preview())
                         c90.on_value_change(lambda _: update_live_preview())
                         c110.on_value_change(lambda _: update_live_preview())
                         c150.on_value_change(lambda _: update_live_preview())
-                        # Also on input (faster than change)
                         c63.on("input", lambda _: update_live_preview())
                         c90.on("input", lambda _: update_live_preview())
                         c110.on("input", lambda _: update_live_preview())
@@ -1285,8 +1076,6 @@ def main_spa_page():
                                 except Exception as ex2:
                                     DailyReport.objects.create(user=user, report_title=current_title, report_date=selected_date, area_name=area_val, qty_63mm=q63, qty_90mm=q90, qty_110mm=q110, qty_150mm=q150, total_qty=q63+q90+q110+q150, price_sum=float(total_mtr_calc))
                             c63.value = ""; c90.value = ""; c110.value = ""; c150.value = ""; 
-                            # Area/Labour persistent - DON'T clear (user request)
-                            # But Connection clear after save - each time different (user request)
                             try:
                                 connection_input.value = ""
                                 connection_input.update()
@@ -1295,7 +1084,6 @@ def main_spa_page():
                             extra_state["63"]=0; extra_state["90"]=0; extra_state["110"]=0; extra_state["150"]=0;
                             extra_63_input.value=""; extra_90_input.value=""; extra_110_input.value=""; extra_150_input.value="";
                             update_live_preview()
-                            # Save area/labour as default so it stays after back and re-entry
                             try:
                                 app.storage.user["default_area_name"] = area_val
                                 app.storage.user["default_labour_name"] = labour_val
@@ -1311,9 +1099,14 @@ def main_spa_page():
                                 except:
                                     pass
                             ui.notify(f"✅ Saved! Area:{area_val} MTR:{total_mtr_calc} (Extra:{ex63+ex90+ex110+ex150})", type="positive", position="top", timeout=3000)
-                        ui.button("⚡ Save", icon="bolt", on_click=save_daily_report).props("rounded no-caps").classes("w-full py-2.5 mt-3 bg-gradient-to-r from-emerald-600 via-green-600 to-teal-600 text-white font-extrabold text-sm shadow-xl")
+                            try:
+                                new_report_dialog.close()
+                            except:
+                                pass
+                        save_btn.on_click(save_daily_report)
 
         def build_filter():
+
             filter_view.clear()
             user = state["user"]
             if not user:
@@ -1444,20 +1237,7 @@ def main_spa_page():
                                                                             except: return 0
                                                                         q63 = pq(e63.value); q90 = pq(e90.value); q110 = pq(e110.value); q150 = pq(e150.value)
                                                                         ex_63 = pq(ex63.value); ex_90 = pq(ex90.value); ex_110 = pq(ex110.value); ex_150 = pq(ex150.value)
-                                                                        # Use user's MTR for edit calc too
-                                                                        def get_umtr(f, d):
-                                                                            try:
-                                                                                return float(getattr(user, f, d))
-                                                                            except:
-                                                                                try:
-                                                                                    sv = app.storage.user.get(f, None)
-                                                                                    if sv is not None:
-                                                                                        return float(sv)
-                                                                                except:
-                                                                                    pass
-                                                                                return d
-                                                                        um63 = get_umtr('mtr_63mm', 6.0); um90 = get_umtr('mtr_90mm', 6.0); um110 = get_umtr('mtr_110mm', 6.0); um150 = get_umtr('mtr_150mm', 5.5)
-                                                                        total_mtr = (q63*um63+ex_63)+(q90*um90+ex_90)+(q110*um110+ex_110)+(q150*um150+ex_150)
+                                                                        total_mtr = (q63*6+ex_63)+(q90*6+ex_90)+(q110*6+ex_110)+(q150*5.5+ex_150)
                                                                         rpt.report_date = new_date
                                                                         rpt.area_name = new_area
                                                                         try:
@@ -1512,68 +1292,16 @@ def main_spa_page():
                                                                 confirm_del_btn.on_click(make_del())
                                                 del_btn.on_click(del_dialog.open)
                             else:
-                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm'), ex63=Sum('extra_63mm'), ex90=Sum('extra_90mm'), ex110=Sum('extra_110mm'), ex150=Sum('extra_150mm'), tmtr=Sum('total_mtr')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; te63 = agg['ex63'] or 0; te90 = agg['ex90'] or 0; te110 = agg['ex110'] or 0; te150 = agg['ex150'] or 0; tmtr = agg['tmtr'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
-                                total_connections = 0
-                                try:
-                                    for r in base_qs:
-                                        cv = getattr(r, 'connection', '') or ''
-                                        try:
-                                            if cv:
-                                                total_connections += float(str(cv).strip() or 0)
-                                        except:
-                                            pass
-                                except:
-                                    pass
-                                # Calculate total connections for month
-                                total_connections = 0
-                                try:
-                                    for r in base_qs:
-                                        conn_val = getattr(r, 'connection', '') or ''
-                                        try:
-                                            if conn_val:
-                                                total_connections += float(str(conn_val).strip() or 0)
-                                        except:
-                                            pass
-                                except Exception as ce:
-                                    print(f"Connection sum error: {ce}")
+                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
-                                    # Calculate total MTR per type: qty * user MTR + extra - dynamic
-                                    def get_user_mtr(field, default):
-                                        try:
-                                            v = getattr(user, field, default)
-                                            return float(v) if v else default
-                                        except:
-                                            try:
-                                                sv = app.storage.user.get(field, None)
-                                                if sv is not None:
-                                                    return float(sv)
-                                            except:
-                                                pass
-                                            return default
-                                    um63 = get_user_mtr('mtr_63mm', 6.0); um90 = get_user_mtr('mtr_90mm', 6.0); um110 = get_user_mtr('mtr_110mm', 6.0); um150 = get_user_mtr('mtr_150mm', 5.5)
-                                    tm63 = t63*um63 + te63; tm90 = t90*um90 + te90; tm110 = t110*um110 + te110; tm150 = t150*um150 + te150
-                                    rows = [
-                                        {"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "total_mtr": tm63},
-                                        {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "total_mtr": tm90},
-                                        {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "total_mtr": tm110},
-                                        {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "total_mtr": tm150}
-                                    ]
-                                    columns = [
-                                        {"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"},
-                                        {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"},
-                                        {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"},
-                                        {"name": "extra", "label": "Extra MTR", "field": "extra", "align": "center"},
-                                        {"name": "total_mtr", "label": "Total MTR", "field": "total_mtr", "align": "center"}
-                                    ]
-                                    ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-[11px] font-semibold")
-                                    with ui.row().classes("w-full justify-center gap-2 mt-2 flex-wrap"):
-                                        ui.badge(f"PVC: {t63+t90+t110} Qty | Extra:{te63+te90+te110} MTR | Total MTR:{tm63+tm90+tm110}", color="blue").classes("text-[10px] font-bold px-2 py-1")
-                                        ui.badge(f"DI: {t150} Qty | Extra:{te150} MTR | Total MTR:{tm150}", color="purple").classes("text-[10px] font-bold px-2 py-1")
-                                        ui.badge(f"Grand Extra: {te63+te90+te110+te150} MTR | Grand Total MTR: {tm63+tm90+tm110+tm150}", color="green").classes("text-[10px] font-bold px-2 py-1")
-                                        ui.badge(f"Total Connections: {total_connections}", color="orange").classes("text-[10px] font-bold px-2 py-1")
-                                        ui.badge(f"Total Connections: {total_connections}", color="orange").classes("text-[10px] font-bold px-2 py-1")
+                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "unit": "6MTR per PIPES"}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "unit": "6MTR per PIPES"}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "unit": "6MTR per PIPES"}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "unit": "5.5MTR"}]
+                                    columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Quantity", "field": "quantity", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}]
+                                    ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
+                                    with ui.row().classes("w-full justify-center gap-2 mt-2"):
+                                        ui.badge(f"Total PVC Pipes: {t63+t90+t110} Qty", color="blue").classes("text-xs font-bold px-2 py-1")
+                                        ui.badge(f"Total DI Pipes: {t150} Qty", color="purple").classes("text-xs font-bold px-2 py-1")
                                     with ui.dialog() as month_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                                         with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
                                             ui.label(f"📥 Download {period_text}").classes("font-extrabold text-xs text-white")
@@ -1581,15 +1309,15 @@ def main_spa_page():
                                         with ui.column().classes("w-full p-4 gap-2 bg-white"):
                                             ui.label(f"{period_text} - {t63+t90+t110+t150} Qty").classes("text-xs font-bold text-green-700 text-center w-full mb-1")
                                             def do_m_csv():
-                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110, t150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.csv")
                                                 month_download_dialog.close()
                                             def do_m_excel():
-                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110, t150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.xlsx")
                                                 month_download_dialog.close()
                                             def do_m_pdf():
-                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110, t150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.pdf")
                                                 month_download_dialog.close()
                                             ui.button("As CSV", icon="table_view", on_click=do_m_csv).props("outline rounded").classes("w-full font-bold text-sm border-blue-500 text-blue-600")
@@ -1775,8 +1503,7 @@ def main_spa_page():
                         if not is_valid_6digit(p_val):
                             ui.notify("Password must be exactly 6 digits! e.g., 123456", type="negative", position="top"); return
                         if p_val != rp_val: ui.notify("Passwords not same!", type="negative", position="top"); return
-                        if AppUser.objects.filter(email=e_val).exists(): ui.notify("Already registered with this Email!", type="negative", position="top"); return
-                        if AppUser.objects.filter(username=u_val).exists(): ui.notify("Username already taken! Try different", type="negative", position="top"); return
+                        if AppUser.objects.filter(email=e_val).exists(): ui.notify("Already registered!", type="negative", position="top"); return
                         user = AppUser.objects.create(username=u_val, email=e_val, password=make_password(p_val), default_report_title="Veraval site daily progress report")
                         CACHE["users"][e_val] = user
                         pwd_key = hashlib.sha256(f"{e_val}:{p_val}".encode()).hexdigest()
@@ -1798,24 +1525,17 @@ def main_spa_page():
                 ui.notify("Password must be exactly 6 digits!", type="warning", position="top")
                 return
             pwd_key = hashlib.sha256(f"{email}:{pwd}".encode()).hexdigest()
-            # Clear stale cache if needed - try cached login but with safety
-            try:
-                if pwd_key in CACHE["pwd_verified"]:
-                    user_id = CACHE["pwd_verified"][pwd_key]
-                    cached_user = CACHE["users"].get(email)
-                    if cached_user and cached_user.id == user_id:
-                        # Verify cached user still valid by checking DB quickly
-                        state["user"] = cached_user
-                        app.storage.user["logged_in_user_id"] = cached_user.id
-                        app.storage.user["saved_email"] = email
-                        app.storage.user["saved_password"] = pwd
-                        status_label.set_text("✅ Logged in (cached)")
-                        show_home()
-                        return
-            except Exception as ce:
-                print(f"Cache login fail, clearing: {ce}")
-                CACHE["users"].pop(email, None)
-                CACHE["pwd_verified"].pop(pwd_key, None)
+            if pwd_key in CACHE["pwd_verified"]:
+                user_id = CACHE["pwd_verified"][pwd_key]
+                cached_user = CACHE["users"].get(email)
+                if cached_user and cached_user.id == user_id:
+                    state["user"] = cached_user
+                    app.storage.user["logged_in_user_id"] = cached_user.id
+                    app.storage.user["saved_email"] = email
+                    app.storage.user["saved_password"] = pwd
+                    status_label.set_text("✅ Logged in (cached)")
+                    show_home()
+                    return
             status_label.set_text("⏳ Verifying...")
             login_btn.props("loading")
             try:
@@ -1823,36 +1543,17 @@ def main_spa_page():
                     try:
                         u = AppUser.objects.get(email=email)
                     except AppUser.DoesNotExist:
-                        return None, False, "not_found"
-                    except Exception as db_e:
-                        # DB column missing or other error - try to ensure columns and retry
-                        print(f"DB error on get user: {db_e}, trying ensure")
-                        try:
-                            ensure_neon_fast()
-                            u = AppUser.objects.get(email=email)
-                        except Exception as e2:
-                            return None, False, f"db_error:{e2}"
-                    try:
-                        is_ok = check_password(pwd, u.password)
-                    except Exception as pe:
-                        print(f"Password check error: {pe}")
-                        return u, False, "pwd_check_fail"
-                    return u, is_ok, "ok"
-                quick_user, is_valid, msg = await run.io_bound(get_user_and_check)
+                        return None, False
+                    is_ok = check_password(pwd, u.password)
+                    return u, is_ok
+                quick_user, is_valid = await run.io_bound(get_user_and_check)
                 if not quick_user:
-                    if "db_error" in msg:
-                        status_label.set_text(f"❌ DB Error: {msg[:60]}")
-                        ui.notify(f"DB needs fix: {msg}. Please restart or check logs.", type="negative", position="top", timeout=5000)
-                        # Try clear cache and force re-migrate hint
-                        CACHE["users"].clear()
-                        CACHE["pwd_verified"].clear()
-                    else:
-                        status_label.set_text("❌ User not found")
-                        ui.notify("User not found! Register first.", type="negative", position="top")
+                    status_label.set_text("❌ User not found")
+                    ui.notify("User not found! Register first.", type="negative", position="top")
                     return
                 if not is_valid:
                     status_label.set_text("❌ Invalid password")
-                    ui.notify("❌ Invalid password! Check 6 digits", type="negative", position="top")
+                    ui.notify("❌ Invalid password!", type="negative", position="top")
                     return
                 CACHE["users"][email] = quick_user
                 CACHE["pwd_verified"][pwd_key] = quick_user.id
@@ -1865,13 +1566,7 @@ def main_spa_page():
             except Exception as e:
                 print(f"❌ Login error: {e}\n{traceback.format_exc()}", flush=True)
                 status_label.set_text(f"❌ Error: {str(e)[:80]}")
-                ui.notify(f"Login failed: {e}. Try clearing cache or re-register.", type="negative", position="top", timeout=5000)
-                # Clear problematic cache
-                try:
-                    CACHE["users"].pop(email, None)
-                    CACHE["pwd_verified"].pop(pwd_key, None)
-                except:
-                    pass
+                ui.notify(f"Login failed: {e}", type="negative", position="top")
             finally:
                 login_btn.props(remove="loading")
 
