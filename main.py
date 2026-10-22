@@ -1087,7 +1087,7 @@ def main_spa_page():
                                         conn_name_input = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
                                         conn_mobile_input = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense type=tel").classes("w-full mt-1 font-bold")
                                         with ui.row().classes("w-full justify-between gap-2 mt-4"):
-                                            ui.button("Done", icon="check", on_click=add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold")
+                                            ui.button("Cancle", icon="check", on_click=add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold")
                                             def do_add_conn():
                                                 cno = (conn_no_input.value or "").strip()
                                                 cname = (conn_name_input.value or "").strip()
