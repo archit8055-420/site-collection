@@ -1,7 +1,7 @@
+
 import django.db.models.deletion
 import django.utils.timezone
 from django.db import migrations, models
-
 
 class Migration(migrations.Migration):
 
@@ -15,7 +15,7 @@ class Migration(migrations.Migration):
             name='AppUser',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('username', models.CharField(max_length=150)),
+                ('username', models.CharField(max_length=150, unique=True)),
                 ('email', models.EmailField(max_length=254, unique=True)),
                 ('password', models.CharField(max_length=255)),
                 ('default_report_title', models.CharField(default='Veraval site daily progress report', max_length=255)),
@@ -103,7 +103,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('token', models.CharField(max_length=100, unique=True)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
-                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, to='models_app.appuser')),
+                ('user', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='reset_tokens', to='models_app.appuser')),
             ],
         ),
     ]
