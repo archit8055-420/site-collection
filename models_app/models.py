@@ -4,11 +4,11 @@ class AppUser(models.Model):
     username = models.CharField(max_length=150, unique=True)
     email = models.EmailField(unique=True)
     password = models.CharField(max_length=255)
-    default_report_title = models.CharField(max_length=255, default="Site Daily Progress Report")
+    default_report_title = models.CharField(max_length=255, default="Veraval site daily progress report")
     default_area_name = models.CharField(max_length=255, default="", blank=True)
     default_labour_name = models.CharField(max_length=255, default="", blank=True)
     default_connection = models.CharField(max_length=100, default="", blank=True)
-    # Per pipe MTR - permanent, user can change, stays forever
+    # Per pipe MTR - permanent
     mtr_63mm = models.FloatField(default=6.0)
     mtr_90mm = models.FloatField(default=6.0)
     mtr_110mm = models.FloatField(default=6.0)
@@ -19,8 +19,8 @@ class AppUser(models.Model):
         return self.username
 
 class SavedArea(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="saved_areas")
-    area_name = models.CharField(max_length=100)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="areas")
+    area_name = models.CharField(max_length=150)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
     class Meta:
@@ -30,7 +30,7 @@ class SavedArea(models.Model):
         return self.area_name
 
 class SavedLabour(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="saved_labours")
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="labours")
     labour_name = models.CharField(max_length=150)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
@@ -44,7 +44,7 @@ class DailyReport(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="reports")
     report_title = models.CharField(max_length=255, default="Site Daily Progress Report")
     report_date = models.DateField()
-    area_name = models.CharField(max_length=100)
+    area_name = models.CharField(max_length=150)
     labour_name = models.CharField(max_length=150, default="", blank=True)
     connection = models.CharField(max_length=100, default="", blank=True)
     qty_63mm = models.FloatField(default=0)
@@ -69,7 +69,6 @@ class DailyReport(models.Model):
     def __str__(self):
         return f"{self.area_name} - {self.report_date}"
 
-
 class ConnectionEntry(models.Model):
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="connection_entries")
     report = models.ForeignKey(DailyReport, on_delete=models.CASCADE, related_name="connections", null=True, blank=True)
@@ -84,10 +83,9 @@ class ConnectionEntry(models.Model):
         return f"{self.connection_no},{self.name},{self.mobile} - {self.report_date}"
 
 class PasswordResetToken(models.Model):
-
     user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="reset_tokens")
     token = models.CharField(max_length=100, unique=True)
-    created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
-
+    created_at = models.DateTimeField(auto_now_add=True)
+    
     def __str__(self):
         return f"Reset token for {self.user.email}"
