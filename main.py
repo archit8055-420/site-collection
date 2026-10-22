@@ -281,7 +281,7 @@ def generate_single_pdf(report):
             c.setFillColor(colors.black)
             total = mtr + extra
             c.drawString(40, y, str(idx)); c.drawString(70, y, dia); c.drawString(135, y, str(qty)); c.drawString(175, y, unit); 
-            c.drawString(220, y, f"{mtr} MTR"); c.drawString(300, y, f"{extra} MTR"); c.drawString(380, y, f"{total} MTR")
+            c.drawString(220, y, f"{mtr} MTR"); c.drawString(290, y, f"{extra} MTR"); c.drawString(360, y, f"{total} MTR")
             y -= 22
             pvc_total += qty; pvc_mtr_total += mtr; pvc_extra_total += extra
         y -= 5
@@ -305,7 +305,7 @@ def generate_single_pdf(report):
         c.setFillColor(colors.HexColor("#ECFDF5")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
         c.setFillColor(colors.black)
         c.drawString(40, y, "1"); c.drawString(70, y, "150MM DI"); c.drawString(135, y, str(di_qty)); c.drawString(175, y, "5.5MTR"); 
-        c.drawString(220, y, f"{di_mtr} MTR"); c.drawString(300, y, f"{ex150} MTR"); c.drawString(380, y, f"{di_total} MTR")
+        c.drawString(220, y, f"{di_mtr} MTR"); c.drawString(290, y, f"{ex150} MTR"); c.drawString(360, y, f"{di_total} MTR")
         y -= 22
         y -= 5
         c.setFillColor(colors.HexColor("#D1FAE5")); c.rect(30, y-5, 540, 22, fill=1, stroke=0)
@@ -756,14 +756,149 @@ def main_spa_page():
 
 
 
-
+        def build_home():
+            home_view.clear()
+            user = state["user"]
+            if not user:
+                show_login()
+                return
+            try:
+                fresh_user = AppUser.objects.get(id=user.id)
+                CACHE["users"][fresh_user.email] = fresh_user
+                state["user"] = fresh_user
+                user = fresh_user
+            except Exception:
+                pass
+            with home_view:
+                with ui.column().classes("w-full max-w-md items-center gap-0"):
+                    with ui.card().classes("w-full rounded-2xl shadow-xl bg-white p-1.5 border-2 border-green-200"):
+                        with ui.row().classes("w-full justify-between items-center mb-1 px-1 py-0.5 bg-slate-50 rounded-full border"):
+                            ui.button("Back", icon="arrow_back", on_click=show_login_as_logout).props("flat rounded dense no-caps").classes("back-btn text-[11px] shadow-sm")
+                            today_str = today_ist().isoformat()
+                            with ui.row().classes("date-pill-compact items-center justify-center"):
+                                home_date_input = ui.input(value=today_str).props("type=date borderless dense").classes("text-[11px] font-bold")
+                            with ui.button(icon="account_circle").props("round unelevated dense").classes("bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-md"):
+                                with ui.menu().classes("rounded-xl shadow-xl border border-purple-200"):
+                                    with ui.menu_item(on_click=show_profile).classes("hover:bg-purple-50 font-semibold"):
+                                        with ui.row().classes("items-center gap-2"): ui.icon("person", color="purple"); ui.label("Profile")
+                                    ui.separator()
+                                    with ui.menu_item(on_click=show_filter).classes("hover:bg-purple-50 font-semibold"):
+                                        with ui.row().classes("items-center gap-2"): ui.icon("filter_alt", color="indigo"); ui.label("Filter")
+                        
+                        with ui.row().classes("w-full justify-center mb-1 mt-0.5"):
+                            title_input = ui.input(value=user.default_report_title or "Veraval site").props("borderless dense input-class='text-center font-extrabold text-[13px] text-slate-900'").classes("w-full px-2 py-0.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 shadow-md border-2 border-purple-300")
+                            def save_title_persist():
+                                try:
+                                    new_title = (title_input.value or "").strip()
+                                    if not new_title:
+                                        return
+                                    if new_title == user.default_report_title:
+                                        return
+                                    user.default_report_title = new_title
+                                    user.save(update_fields=['default_report_title'])
+                                    CACHE["users"][user.email] = user
+                                    state["user"] = user
+                                    ui.notify(f"✅ Title Saved", type="positive", position="top", timeout=2000)
+                                except Exception as ex:
+                                    print(f"Title save fail: {ex}")
+                            title_input.on("blur", lambda _: save_title_persist())
+                            title_input.on("keydown.enter", lambda _: save_title_persist())
+                        def get_areas():
+                            if user.id in CACHE["areas"]:
+                                return CACHE["areas"][user.id]
+                            areas = list(SavedArea.objects.filter(user=user).order_by("-id").values_list("area_name", flat=True)[:100])
+                            CACHE["areas"][user.id] = areas
+                            return areas
+                        def get_labours():
+                            if "labours" not in CACHE:
+                                CACHE["labours"] = {}
+                            if user.id in CACHE["labours"]:
+                                return CACHE["labours"][user.id]
+                            if HAS_LABOUR_MODEL:
+                                try:
+                                    labours = list(SavedLabour.objects.filter(user=user).order_by("-id").values_list("labour_name", flat=True)[:100])
+                                except:
+                                    labours = []
+                            else:
+                                labours = []
+                            CACHE["labours"][user.id] = labours
+                            return labours
+                        saved_areas = get_areas()
+                        saved_labours = get_labours()
+                        def get_default_area():
+                            try:
+                                stored = app.storage.user.get("default_area_name", "")
+                                if stored:
+                                    return stored
+                                if hasattr(user, 'default_area_name') and user.default_area_name:
+                                    return user.default_area_name
+                                last = DailyReport.objects.filter(user=user).order_by("-id").first()
+                                if last and last.area_name:
+                                    return last.area_name
+                            except:
+                                pass
+                            return ""
+                        def get_default_labour():
+                            try:
+                                stored = app.storage.user.get("default_labour_name", "")
+                                if stored:
+                                    return stored
+                                if hasattr(user, 'default_labour_name') and user.default_labour_name:
+                                    return user.default_labour_name
+                                last = DailyReport.objects.filter(user=user).order_by("-id").first()
+                                if last and last.labour_name:
+                                    return last.labour_name
+                            except:
+                                pass
+                            return ""
+                        def save_default_area():
+                            try:
+                                val = (area_input.value or "").strip()
+                                if not val:
+                                    return
+                                app.storage.user["default_area_name"] = val
+                                if val != getattr(user, 'default_area_name', ''):
+                                    try:
+                                        user.default_area_name = val
+                                        user.save(update_fields=['default_area_name'])
+                                        CACHE["users"][user.email] = user
+                                    except:
+                                        pass
+                            except Exception as e:
+                                print(f"Area save fail: {e}")
+                        def save_default_labour():
+                            try:
+                                val = (labour_input.value or "").strip()
+                                if not val:
+                                    return
+                                app.storage.user["default_labour_name"] = val
+                                if val != getattr(user, 'default_labour_name', ''):
+                                    try:
+                                        user.default_labour_name = val
+                                        user.save(update_fields=['default_labour_name'])
+                                        CACHE["users"][user.email] = user
+                                    except:
+                                        pass
+                            except Exception as e:
+                                print(f"Labour save fail: {e}")
+                        with ui.row().classes("w-full mb-1 gap-2"):
+                            with ui.column().classes("flex-1 gap-0.5"):
+                                ui.label("Enter Area *").classes("text-[12px] font-extrabold text-green-700 ml-1")
+                                area_input = ui.input(placeholder="Type area...", value=get_default_area()).props("outlined rounded dense color=green input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
+                                area_input.on("blur", lambda _: save_default_area())
+                                area_input.on("keydown.enter", lambda _: save_default_area())
+                            with ui.column().classes("flex-1 gap-0.5"):
+                                ui.label("Enter Labour Name").classes("text-[12px] font-extrabold text-blue-700 ml-1")
+                                labour_input = ui.input(placeholder="Type labour...", value=get_default_labour()).props("outlined rounded dense color=blue input-class='text-[13px]'").classes("editable-area w-full bg-white font-bold text-[13px] shadow-sm")
+                                labour_input.on("blur", lambda _: save_default_labour())
+                                labour_input.on("keydown.enter", lambda _: save_default_labour())
+                        pipe_mtr_state = {"63": 6.0, "90": 6.0, "110": 6.0, "150": 5.5}
                         
                         with ui.row().classes("w-full justify-center items-center gap-2 mb-2 mt-1"):
                             pipe_logic_btn = ui.button("PIPE MTR LOGIC", icon="info").props("dense rounded outline color=purple").classes("text-[10px] font-bold px-2 py-1 border-purple-300")
                             with ui.row().classes("items-center gap-1"):
                                 ui.icon("bolt", color="green", size="1.1rem"); ui.label("PipeLine Progress").classes("text-[14px] font-extrabold text-slate-800 text-center")
                         
-                        # Dialog for PIPE MTR LOGIC
                         with ui.dialog() as pipe_logic_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
                             with ui.column().classes("w-full p-0 gap-0"):
                                 with ui.row().classes("w-full bg-gradient-to-r from-purple-600 to-indigo-600 p-3 items-center justify-between text-white"):
@@ -793,13 +928,11 @@ def main_spa_page():
 
                         extra_state = {"63": 0.0, "90": 0.0, "110": 0.0, "150": 0.0}
                         
-                        # +New Report Button - Center, big space
                         with ui.column().classes("w-full items-center justify-center py-10 gap-3 mt-1 bg-slate-50 rounded-2xl border-2 border-dashed border-green-200"):
                             ui.icon("assignment_add", size="2.5rem", color="green")
                             ui.label("No active report - Start new").classes("text-[11px] font-bold text-slate-500")
                             new_report_btn = ui.button("+New Report", icon="add").props("rounded").classes("w-3/5 py-3 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold text-[14px] shadow-xl")
                         
-                        # New Report Dialog with 3-icon navigation
                         with ui.dialog() as new_report_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-md shadow-2xl overflow-hidden"):
                             with ui.column().classes("w-full p-0 gap-0"):
                                 with ui.row().classes("w-full bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 p-3 items-center justify-between text-white"):
@@ -894,7 +1027,6 @@ def main_spa_page():
                         
                         new_report_btn.on_click(new_report_dialog.open)
                         
-                        # Dialogs for Extra MTR
                         with ui.dialog() as extra_63_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-xs bg-white shadow-2xl"):
                             ui.label("Enter Extra Meter for 63MM Pipe").classes("text-sm font-extrabold text-slate-800 text-center w-full")
                             extra_63_input = ui.input(placeholder="Ex: 5", value="").props("type=number outlined dense autofocus").classes("w-full font-bold text-center")
