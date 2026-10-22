@@ -1396,7 +1396,8 @@ def main_spa_page():
                                 pass
                         save_btn.on_click(save_daily_report)
 
-                def build_filter():
+        def build_filter():
+
             filter_view.clear()
             user = state["user"]
             if not user:
@@ -1409,10 +1410,7 @@ def main_spa_page():
                 user = fresh
             except:
                 pass
-            today = today_ist()
-            months = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}
-            years = {y: str(y) for y in range(today.year - 5, today.year + 2)}
-            
+            today = today_ist(); months = {1: "Jan", 2: "Feb", 3: "Mar", 4: "Apr", 5: "May", 6: "Jun", 7: "Jul", 8: "Aug", 9: "Sep", 10: "Oct", 11: "Nov", 12: "Dec"}; years = {y: str(y) for y in range(today.year - 5, today.year + 2)}
             with filter_view:
                 with ui.column().classes("w-full max-w-md items-center gap-2"):
                     with ui.card().classes("w-full rounded-3xl shadow-2xl bg-white p-3 sm:p-5 border-2 border-green-200"):
@@ -1420,211 +1418,416 @@ def main_spa_page():
                             ui.button("Back to Home", icon="arrow_back", on_click=show_home).props("flat rounded no-caps").classes("back-btn text-xs")
                         with ui.row().classes("w-full justify-center my-1.5"): 
                             ui.label(user.default_report_title).classes("w-full px-2 py-1.5 rounded-full bg-gradient-to-r from-cyan-200 via-purple-200 to-fuchsia-300 text-slate-900 font-extrabold text-center text-xs")
-                        
-                        # --- DATE FILTER ---
                         with ui.grid(columns=3).classes("w-full gap-1.5 my-2.5 bg-green-50 p-2 rounded-2xl border border-green-200"):
-                            date_options = {"": "Select Date", **{str(d): f"{d:02d}" for d in range(1, 32)}}
-                            day_select = ui.select(options=date_options, value="", label="Date").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
+                            date_options = {"": "Select Date", **{str(d): f"{d:02d}" for d in range(1, 32)}}; day_select = ui.select(options=date_options, value="", label="Date").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
                             month_select = ui.select(options=months, value=today.month, label="Month").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
                             year_select = ui.select(options=years, value=today.year, label="Year").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
-
-                        # --- NEW: AREA & LABOUR FILTER (Tamaari demand pramane) ---
-                        with ui.grid(columns=2).classes("w-full gap-2 my-1 bg-orange-50 p-2 rounded-2xl border border-orange-200"):
-                            area_select = ui.select(options={"": "All Area"}, value="", label="Select Area").props("outlined rounded dense color=orange").classes("w-full bg-white font-bold text-xs")
-                            labour_select = ui.select(options={"": "All Labour"}, value="", label="Select Labour").props("outlined rounded dense color=blue").classes("w-full bg-white font-bold text-xs")
-
                         table_container = ui.column().classes("w-full mt-1 gap-2")
-
-                        def get_distinct_areas(y, m):
-                            try:
-                                qs = DailyReport.objects.filter(user=user, report_date__year=y, report_date__month=m).values_list('area_name', flat=True).distinct()
-                                areas = sorted(set([a for a in qs if a]))
-                                return {"": "All Area", **{a: a for a in areas}}
-                            except:
-                                return {"": "All Area"}
-
-                        def get_distinct_labours(y, m, area_name=""):
-                            try:
-                                qs = DailyReport.objects.filter(user=user, report_date__year=y, report_date__month=m)
-                                if area_name:
-                                    qs = qs.filter(area_name=area_name)
-                                labs = qs.values_list('labour_name', flat=True).distinct()
-                                labs = sorted(set([l for l in labs if l]))
-                                return {"": "All Labour", **{l: l for l in labs}}
-                            except:
-                                return {"": "All Labour"}
-
-                        def refresh_area_labour_options():
-                            try:
-                                y = int(year_select.value); m = int(month_select.value)
-                                # Area update
-                                area_opts = get_distinct_areas(y, m)
-                                area_select.set_options(area_opts)
-                                # If current area not in new list, reset to All
-                                if area_select.value not in area_opts:
-                                    area_select.value = ""
-                                # Labour update based on area
-                                labour_opts = get_distinct_labours(y, m, area_select.value)
-                                labour_select.set_options(labour_opts)
-                                if labour_select.value not in labour_opts:
-                                    labour_select.value = ""
-                            except Exception as e:
-                                print(f"Area/Labour refresh fail: {e}")
-
                         def load_table_data():
                             table_container.clear()
-                            try:
-                                sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
-                                sel_area = (area_select.value or "").strip()
-                                sel_labour = (labour_select.value or "").strip()
-                            except:
-                                return
-
+                            sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
                             base_qs = DailyReport.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
-                            # Apply Area & Labour filter
-                            if sel_area:
-                                base_qs = base_qs.filter(area_name=sel_area)
-                            if sel_labour:
-                                base_qs = base_qs.filter(labour_name=sel_labour)
-
                             if not base_qs.exists():
                                 with table_container:
                                     with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
-                                        ui.icon("info", size="2.2rem", color="red")
-                                        ui.label(f"No Data for {sel_area or 'All'}").classes("text-sm font-extrabold text-red-700 mt-1")
+                                        ui.icon("info", size="2.2rem", color="red"); ui.label("No Data").classes("text-sm font-extrabold text-red-700 mt-1")
                                 return
-
-                            # --- DAY WISE ---
                             if sel_day:
                                 qs = base_qs.filter(report_date__day=int(sel_day)).order_by('-id')
-                                period_text = f"Date: {int(sel_day):02d} {months[sel_month]} {sel_year} | {sel_area or 'All Area'} | {sel_labour or 'All Labour'}"
+                                period_text = f"Date: {int(sel_day):02d} {months[sel_month]} {sel_year}"
                                 with table_container:
                                     if not qs.exists():
-                                        with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center"):
-                                            ui.label("No Data").classes("text-sm font-extrabold text-red-700")
+                                        with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
+                                            ui.icon("info", size="2.2rem", color="red"); ui.label("No Data").classes("text-sm font-extrabold text-red-700 mt-1")
                                         return
                                     agg = qs.aggregate(t=Sum('total_qty')); grand_total = agg['t'] or 0
-                                    # Connection sum logic same as yours...
                                     day_total_conn = 0
                                     try:
                                         from models_app.models import ConnectionEntry
-                                        entries = ConnectionEntry.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month, report_date__day=int(sel_day))
-                                        if sel_area: entries = entries.filter(area_name=sel_area)
-                                        for ce in entries:
-                                            try: day_total_conn += float(str(ce.connection_no or 0).strip() or 0)
-                                            except: pass
-                                    except: pass
+                                        if qs.exists():
+                                            entries = ConnectionEntry.objects.filter(user=user, report_date=qs.first().report_date)
+                                            for ce in entries:
+                                                try:
+                                                    day_total_conn += float(str(ce.connection_no or 0).strip() or 0)
+                                                except:
+                                                    pass
+                                        if day_total_conn == 0:
+                                            for r in qs:
+                                                try:
+                                                    cv = getattr(r, 'connection', '') or ''
+                                                    if cv:
+                                                        day_total_conn += float(str(cv).strip() or 0)
+                                                except:
+                                                    pass
+                                    except Exception as e:
+                                        print(f"Daily conn sum fail: {e}")
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
-                                        ui.badge(period_text, color="green").classes("text- font-bold px-2 py-1")
-                                        ui.badge(f"Total: {grand_total} Qty", color="green").classes("text-xs font-bold")
-                                        ui.badge(f"Conn: {day_total_conn}", color="orange").classes("text-xs font-bold")
-
-                                    # --- Your existing day-wise card loop (same as before) ---
+                                        ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {grand_total} Qty", color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Conn: {day_total_conn}", color="orange").classes("text-xs font-bold px-2 py-1")
                                     for report in qs[:50]:
                                         area_display = report.area_name or "No Area"
                                         with ui.card().classes("report-patti w-full rounded-2xl border-2 border-green-200 bg-gradient-to-r from-white to-green-50 p-0 overflow-hidden shadow-md"):
                                             with ui.column().classes("patti-click-area w-full p-3 pb-1").on("click", lambda r=report: show_filter_detail(r)):
                                                 with ui.row().classes("w-full justify-between items-center"):
-                                                    with ui.row().classes("items-center gap-2"):
-                                                        ui.icon("location_on", color="green", size="1.1rem")
-                                                        ui.label(area_display).classes("font-extrabold text- text-indigo-900")
-                                                    ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-")
-                                                ui.label(f"Labour: {get_q(report,'labour_name','')}").classes("text-xs font-semibold text-slate-700 mt-1")
+                                                    with ui.row().classes("items-center gap-2"): ui.icon("location_on", color="green", size="1.1rem"); ui.label(area_display).classes("font-extrabold text-[15px] text-indigo-900")
+                                                    ui.badge(f"{report.report_date.strftime('%d-%m-%Y')}", color="grey").classes("text-[10px]")
+                                                ui.label(report.report_title).classes("text-xs font-semibold text-slate-700 mt-1 w-full truncate")
+                                                # Show connection if exists
                                                 conn_disp = get_q(report, 'connection', '')
                                                 if conn_disp:
-                                                    ui.label(f"🔌 Connection: {conn_disp}").classes("text- font-extrabold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full mt-1")
+                                                    ui.label(f"🔌 Connection: {conn_disp}").classes("text-[11px] font-extrabold text-orange-700 bg-orange-50 px-2 py-0.5 rounded-full mt-1")
                                                 with ui.row().classes("w-full justify-between items-center mt-1"):
-                                                    ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text- font-bold text-slate-700")
-                                                    ui.label(f"Total: {report.total_qty} Qty").classes("text- font-extrabold text-emerald-600")
+                                                    ui.label(f"63:{get_q(report,'qty_63mm')} | 90:{get_q(report,'qty_90mm')} | 110:{get_q(report,'qty_110mm')} | 150DI:{get_q(report,'qty_150mm')}").classes("text-[13px] font-bold text-slate-700")
+                                                    ui.label(f"Total: {report.total_qty} Qty").classes("text-[14px] font-extrabold text-emerald-600")
+                                            with ui.row().classes("w-full justify-end gap-2 px-3 pb-3 pt-1"):
+                                                edit_btn = ui.button("Edit", icon="edit").props("dense rounded").classes("px-4 py-1.5 bg-yellow-400 text-black font-extrabold text-[13px] border-2 border-yellow-500 shadow-sm")
+                                                del_btn = ui.button("Delete", icon="delete").props("dense rounded").classes("px-4 py-1.5 bg-red-600 text-yellow-200 font-extrabold text-[13px] border-2 border-red-700 shadow-md")
+                                                with ui.dialog() as edit_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-md shadow-2xl max-h-[80vh] flex flex-col"):
+                                                    with ui.column().classes("w-full p-0 gap-0 flex flex-col h-full"):
+                                                        with ui.row().classes("w-full bg-gradient-to-r from-blue-500 to-blue-600 p-2.5 items-center justify-between text-white shrink-0"):
+                                                            ui.label(f"✏ Edit - {area_display}").classes("font-extrabold text-[12px] text-white")
+                                                            ui.button(icon="close", on_click=edit_dialog.close).props("flat round dense color=white size=sm").classes("text-white")
+                                                        with ui.column().classes("w-full p-2.5 gap-1.5 bg-white overflow-y-auto flex-1"):
+                                                            ui.label("Date").classes("text-[11px] font-bold text-slate-700")
+                                                            e_date = ui.input(value=report.report_date.isoformat()).props("type=date outlined dense").classes("w-full")
+                                                            ui.label("Area Name").classes("text-[11px] font-bold text-slate-700")
+                                                            e_area = ui.input(value=report.area_name).props("outlined dense").classes("w-full font-bold")
+                                                            ui.label("Labour Name").classes("text-[11px] font-bold text-slate-700")
+                                                            e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
+                                                            ui.label("Connection (Sum)").classes("text-[11px] font-bold text-orange-700")
+                                                            edit_conn_state = {"items": []}
+                                                            try:
+                                                                from models_app.models import ConnectionEntry
+                                                                existing = list(ConnectionEntry.objects.filter(report=report).order_by('id'))
+                                                                if not existing:
+                                                                    existing = list(ConnectionEntry.objects.filter(user=report.user, report_date=report.report_date, area_name=report.area_name).order_by('id'))
+                                                                for ce in existing:
+                                                                    edit_conn_state["items"].append({"conn": ce.connection_no, "name": ce.name, "mobile": ce.mobile, "id": ce.id})
+                                                            except Exception as ee:
+                                                                print(f"Edit conn load fail: {ee}")
+                                                            
+                                                            edit_conn_total = ui.label("Total: 0").classes("text-[11px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded-full text-center w-full border mt-1")
+                                                            
+                                                            del_target = {"idx": -1}
+                                                            
+                                                            # Delete confirmation dialog (single, reused)
+                                                            with ui.dialog() as del_confirm_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
+                                                                with ui.column().classes("w-full p-0 gap-0"):
+                                                                    with ui.row().classes("w-full bg-gradient-to-r from-red-500 to-orange-600 p-3 items-center text-white"):
+                                                                        ui.icon("warning", size="1.2rem")
+                                                                        ui.label("Confirm Delete").classes("font-extrabold text-[13px] text-white")
+                                                                    with ui.column().classes("w-full p-4 gap-3 bg-white"):
+                                                                        del_msg = ui.label("This data will be deleted").classes("text-[12px] font-bold text-slate-700 w-full text-center bg-red-50 p-3 rounded-xl border border-red-200")
+                                                                        ui.label("Are you sure you want to delete this connection?").classes("text-[11px] text-slate-500 w-full text-center")
+                                                                        with ui.row().classes("w-full justify-between gap-2 mt-1"):
+                                                                            ui.button("Cancel", icon="close", on_click=del_confirm_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold text-[12px]")
+                                                                            def do_confirm_delete():
+                                                                                idx = del_target["idx"]
+                                                                                if 0 <= idx < len(edit_conn_state["items"]):
+                                                                                    edit_conn_state["items"].pop(idx)
+                                                                                    del_confirm_dialog.close()
+                                                                                    refresh_edit_conn_list.refresh()
+                                                                                    ui.notify("🗑️ Deleted! Now click main Edit to save.", type="positive", position="top", timeout=2000)
+                                                                                else:
+                                                                                    del_confirm_dialog.close()
+                                                                            ui.button("Delete", icon="delete", on_click=do_confirm_delete).props("rounded").classes("flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-[12px]")
+                                                            
+                                                            @ui.refreshable
+                                                            def refresh_edit_conn_list():
+                                                                total = 0
+                                                                for it in edit_conn_state["items"]:
+                                                                    try:
+                                                                        c = str(it.get('conn','0') or 0).replace(',','').strip()
+                                                                        if '+' in c:
+                                                                            c = c.split('+')[0]
+                                                                        total += float(c or 0)
+                                                                    except:
+                                                                        pass
+                                                                if total == int(total):
+                                                                    edit_conn_total.set_text(f"Total Connections Today: {int(total)}")
+                                                                else:
+                                                                    edit_conn_total.set_text(f"Total Connections Today: {total}")
+                                                                
+                                                                if not edit_conn_state["items"]:
+                                                                    ui.label("No connections").classes("text-[10px] text-slate-400 text-center w-full py-2")
+                                                                else:
+                                                                    for idx, item in enumerate(edit_conn_state["items"]):
+                                                                        with ui.row().classes("w-full bg-white rounded-lg p-2 border border-orange-100 items-center justify-between shadow-sm mb-1"):
+                                                                            ui.label(f"{idx+1}. {item['conn']},{item['name']},{item['mobile']}").classes("text-[11px] font-bold text-slate-800 flex-1")
+                                                                            with ui.row().classes("gap-0"):
+                                                                                def make_edit(i=idx):
+                                                                                    def edit_fn():
+                                                                                        # Create fresh dialog with current item's data - ensures correct data shows
+                                                                                        cur = edit_conn_state["items"][i]
+                                                                                        print(f"EDIT click idx={i} data={cur}")
+                                                                                        with ui.dialog() as dyn_edit_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
+                                                                                            ui.label("Edit Connection").classes("text-[14px] font-extrabold text-blue-700 w-full text-center bg-blue-50 px-3 py-2 rounded-full border")
+                                                                                            # Pre-fill with CURRENT row data
+                                                                                            e_conn = ui.input("Connection", value=str(cur.get('conn',''))).props("outlined dense").classes("w-full mt-2 font-bold")
+                                                                                            e_name = ui.input("Enter Name", value=str(cur.get('name',''))).props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                                            e_mob = ui.input("Mobile No", value=str(cur.get('mobile',''))).props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                                            with ui.row().classes("w-full justify-between gap-2 mt-4"):
+                                                                                                ui.button("Cancel", on_click=dyn_edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 font-bold")
+                                                                                                def do_update():
+                                                                                                    cno = (e_conn.value or "").strip()
+                                                                                                    if not cno:
+                                                                                                        ui.notify("Connection required!", type="warning")
+                                                                                                        return
+                                                                                                    edit_conn_state["items"][i] = {"conn": cno, "name": (e_name.value or "").strip(), "mobile": (e_mob.value or "").strip(), "id": edit_conn_state["items"][i].get("id")}
+                                                                                                    dyn_edit_dialog.close()
+                                                                                                    refresh_edit_conn_list.refresh()
+                                                                                                    ui.notify(f"✏️ Updated! Now click main Edit to save.", type="positive", position="top", timeout=1500)
+                                                                                                ui.button("Update", icon="check", on_click=do_update).props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
+                                                                                        dyn_edit_dialog.open()
+                                                                                    return edit_fn
+                                                                                def make_del(i=idx):
+                                                                                    def del_fn():
+                                                                                        del_target["idx"] = i
+                                                                                        try:
+                                                                                            p = edit_conn_state["items"][i]
+                                                                                            del_msg.set_text(f"This data will be deleted: {p.get('conn','')},{p.get('name','')},{p.get('mobile','')}")
+                                                                                        except:
+                                                                                            del_msg.set_text("This data will be deleted")
+                                                                                        del_confirm_dialog.open()
+                                                                                    return del_fn
+                                                                                ui.button(icon="edit", on_click=make_edit()).props("flat round dense color=blue size=sm").classes("text-blue-600")
+                                                                                ui.button(icon="delete", on_click=make_del()).props("flat round dense color=red size=sm").classes("text-red-600")
+                                                            
+                                                            refresh_edit_conn_list()
+                                                            
+                                                            e_connection = ui.input(value=get_q(report,'connection','')).props("outlined dense color=orange").classes("w-full font-bold bg-orange-50 hidden")
+                                                            # Keep old e_connection for backward compat but hidden
+                                                            # Keep old e_connection for backward compat but hidden
+                                                            e_connection = ui.input(value=get_q(report,'connection','')).props("outlined dense color=orange").classes("w-full font-bold bg-orange-50 hidden")
+                                                            ui.label("Report Title").classes("text-[11px] font-bold text-slate-700")
+                                                            e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
+                                                            ui.label("PVC & DI Quantity").classes("text-[13px] font-extrabold text-green-700 mt-2")
+                                                            with ui.grid(columns=4).classes("w-full gap-2"):
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("63MM PVC").classes("text-[12px] font-bold text-center")
+                                                                    e_63 = ui.input(value=str(get_q(report,'qty_63mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("90MM PVC").classes("text-[12px] font-bold text-center")
+                                                                    e_90 = ui.input(value=str(get_q(report,'qty_90mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("110MM PVC").classes("text-[12px] font-bold text-center")
+                                                                    e_110 = ui.input(value=str(get_q(report,'qty_110mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("150MM DI").classes("text-[12px] font-bold text-center")
+                                                                    e_150 = ui.input(value=str(get_q(report,'qty_150mm'))).props("type=number outlined dense").classes("w-full font-bold text-[14px]")
+                                                            ui.label("Extra MTR (Additional Meters)").classes("text-[13px] font-extrabold text-orange-700 mt-3 bg-orange-50 px-2 py-1 rounded-full")
+                                                            with ui.grid(columns=4).classes("w-full gap-2 mt-1"):
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("63MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_63 = ui.input(value=str(get_q(report,'extra_63mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("90MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_90 = ui.input(value=str(get_q(report,'extra_90mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("110MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_110 = ui.input(value=str(get_q(report,'extra_110mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                                with ui.column().classes("gap-1"):
+                                                                    ui.label("150MM Extra").classes("text-[11px] font-bold text-center text-orange-600")
+                                                                    e_extra_150 = ui.input(value=str(get_q(report,'extra_150mm',0))).props("type=number outlined dense color=orange").classes("w-full font-bold text-[14px] bg-orange-50")
+                                                        with ui.row().classes("w-full justify-between gap-2 p-2 bg-white border-t shrink-0"):
+                                                            ui.button("Cancel", icon="close", on_click=edit_dialog.close).props("flat rounded dense").classes("flex-1 bg-slate-100 text-[12px]")
+                                                            save_edit_btn = ui.button("OK", icon="check").props("rounded dense").classes("flex-1 bg-blue-600 text-white font-bold text-[12px]")
+                                                            def make_save_edit(rpt=report, ed=e_date, ea=e_area, et=e_title, e63=e_63, e90=e_90, e110=e_110, e150=e_150, el=e_labour, ec=e_connection, dlg=edit_dialog, ex63=e_extra_63, ex90=e_extra_90, ex110=e_extra_110, ex150=e_extra_150):
+                                                                def do_save():
+                                                                    try:
+                                                                        try:
+                                                                            new_date = datetime.datetime.strptime((ed.value or "").strip(), "%Y-%m-%d").date()
+                                                                        except:
+                                                                            new_date = rpt.report_date
+                                                                        new_area = (ea.value or "").strip() or rpt.area_name
+                                                                        new_labour = (el.value or "").strip() or get_q(rpt,'labour_name','')
+                                                                        # Calculate sum from edit_conn_state items
+                                                                        new_conn_sum = 0
+                                                                        try:
+                                                                            for it in edit_conn_state.get("items", []):
+                                                                                try:
+                                                                                    new_conn_sum += float(str(it.get('conn','0') or 0).strip() or 0)
+                                                                                except:
+                                                                                    pass
+                                                                        except:
+                                                                            new_conn_sum = 0
+                                                                        # If no items, fallback to old ec field
+                                                                        if new_conn_sum == 0:
+                                                                            try:
+                                                                                new_conn_sum = float((ec.value or "").strip() or 0)
+                                                                            except:
+                                                                                new_conn_sum = 0
+                                                                        if new_conn_sum == int(new_conn_sum):
+                                                                            new_conn = str(int(new_conn_sum)) if new_conn_sum!=0 else ""
+                                                                        else:
+                                                                            new_conn = str(new_conn_sum) if new_conn_sum!=0 else ""
+                                                                        new_title = (et.value or "").strip() or rpt.report_title
+                                                                        def pq(v):
+                                                                            try: return float(v) if v not in (None, "") else 0
+                                                                            except: return 0
+                                                                        q63 = pq(e63.value); q90 = pq(e90.value); q110 = pq(e110.value); q150 = pq(e150.value)
+                                                                        ex_63 = pq(ex63.value); ex_90 = pq(ex90.value); ex_110 = pq(ex110.value); ex_150 = pq(ex150.value)
+                                                                        total_mtr = (q63*6+ex_63)+(q90*6+ex_90)+(q110*6+ex_110)+(q150*5.5+ex_150)
+                                                                        rpt.report_date = new_date
+                                                                        rpt.area_name = new_area
+                                                                        try:
+                                                                            rpt.labour_name = new_labour
+                                                                        except:
+                                                                            pass
+                                                                        try:
+                                                                            rpt.connection = new_conn
+                                                                        except:
+                                                                            pass
+                                                                        rpt.report_title = new_title
+                                                                        rpt.qty_63mm = q63; rpt.qty_90mm = q90; rpt.qty_110mm = q110
+                                                                        try: rpt.qty_150mm = q150
+                                                                        except: pass
+                                                                        try: 
+                                                                            rpt.extra_63mm = ex_63; rpt.extra_90mm = ex_90; rpt.extra_110mm = ex_110; rpt.extra_150mm = ex_150
+                                                                            rpt.total_mtr = total_mtr
+                                                                            rpt.total_pvc = q63+q90+q110; rpt.total_di = q150
+                                                                        except: pass
+                                                                        rpt.total_qty = q63+q90+q110+q150
+                                                                        rpt.price_sum = float(total_mtr)
+                                                                        rpt.save()
+                                                                        # Save ConnectionEntry: delete old and recreate from edit_conn_state
+                                                                        try:
+                                                                            from models_app.models import ConnectionEntry
+                                                                            # Delete all old entries for this report and also by date for safety
+                                                                            ConnectionEntry.objects.filter(report=rpt).delete()
+                                                                            try:
+                                                                                ConnectionEntry.objects.filter(user=rpt.user, report_date=rpt.report_date, area_name=rpt.area_name).exclude(report=rpt).delete()
+                                                                            except:
+                                                                                pass
+                                                                            for it in edit_conn_state.get("items", []):
+                                                                                ConnectionEntry.objects.create(
+                                                                                    user=rpt.user, report=rpt, report_date=new_date,
+                                                                                    connection_no=str(it.get('conn','')).strip(),
+                                                                                    name=str(it.get('name','')).strip(),
+                                                                                    mobile=str(it.get('mobile','')).strip(),
+                                                                                    area_name=new_area
+                                                                                )
+                                                                        except Exception as ce:
+                                                                            print(f"Edit conn save fail: {ce}")
+                                                                            import traceback; traceback.print_exc()
+                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} Conn Sum:{new_conn_sum}", type="positive", position="top", timeout=2000)
+                                                                        dlg.close()
+                                                                        # Instant refresh without Loading screen - only update detail view
+                                                                        try:
+                                                                            # Rebuild detail view directly with updated report, no loading spinner
+                                                                            build_filter_detail(rpt)
+                                                                        except Exception as e:
+                                                                            print(f"Refresh detail fail: {e}")
+                                                                            # Fallback: just close, don't show loading
+                                                                            pass
+                                                                        load_table_data()
+                                                                    except Exception as ex:
+                                                                        import traceback; traceback.print_exc()
+                                                                        ui.notify(f"Edit failed: {ex}", type="negative")
+                                                                return do_save
+                                                            save_edit_btn.on_click(make_save_edit())
+                                                edit_btn.on_click(edit_dialog.open)
+                                                with ui.dialog() as del_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-sm overflow-hidden shadow-2xl"):
+                                                    with ui.column().classes("w-full p-0 gap-0"):
+                                                        with ui.row().classes("w-full bg-gradient-to-r from-red-500 to-red-600 p-4 items-center gap-3 text-white"):
+                                                            ui.icon("warning", size="1.5rem"); ui.label("Delete?").classes("font-extrabold text-sm text-white")
+                                                        with ui.column().classes("w-full p-5 gap-3 bg-white"):
+                                                            ui.label("This report will be permanently deleted!").classes("text-sm font-bold")
+                                                            ui.label(f"Area: {report.area_name} | Labour: {get_q(report,'labour_name','') or 'No Labour'} | Date: {report.report_date.strftime('%d-%m-%Y')} | Total: {report.total_qty} Qty").classes("text-xs text-slate-600")
+                                                            with ui.row().classes("w-full justify-between gap-3 mt-2"):
+                                                                ui.button("Cancel", icon="close", on_click=del_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100")
+                                                                confirm_del_btn = ui.button("Delete", icon="delete_forever").props("rounded").classes("flex-1 bg-red-600 text-white font-bold")
+                                                                def make_del(rpt=report, dlg=del_dialog):
+                                                                    def do_del():
+                                                                        try:
+                                                                            rpt.delete()
+                                                                            ui.notify("🗑️ Data Deleted!", type="positive", position="top", timeout=2000)
+                                                                            dlg.close()
+                                                                            load_table_data()
+                                                                        except Exception as ex:
+                                                                            ui.notify(f"Failed: {ex}", type="negative")
+                                                                    return do_del
+                                                                confirm_del_btn.on_click(make_del())
+                                                del_btn.on_click(del_dialog.open)
                             else:
-                                # --- FULL MONTH WISE (with Area/Labour filter) ---
-                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm'), ex63=Sum('extra_63mm'), ex90=Sum('extra_90mm'), ex110=Sum('extra_110mm'), ex150=Sum('extra_150mm'), tmtr=Sum('total_mtr'))
-                                t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0
-                                te63 = agg['ex63'] or 0; te90 = agg['ex90'] or 0; te110 = agg['ex110'] or 0; te150 = agg['ex150'] or 0
-                                period_text = f"Full Month: {months[sel_month]} {sel_year} | {sel_area or 'All Area'} | {sel_labour or 'All Labour'}"
-
+                                agg = base_qs.aggregate(s63=Sum('qty_63mm'), s90=Sum('qty_90mm'), s110=Sum('qty_110mm'), s150=Sum('qty_150mm'), ex63=Sum('extra_63mm'), ex90=Sum('extra_90mm'), ex110=Sum('extra_110mm'), ex150=Sum('extra_150mm'), tmtr=Sum('total_mtr')); t63 = agg['s63'] or 0; t90 = agg['s90'] or 0; t110 = agg['s110'] or 0; t150 = agg['s150'] or 0; te63 = agg['ex63'] or 0; te90 = agg['ex90'] or 0; te110 = agg['ex110'] or 0; te150 = agg['ex150'] or 0; tmtr = agg['tmtr'] or 0; period_text = f"Full Month: {months[sel_month]} {sel_year}"
                                 total_connections = 0
                                 try:
                                     from models_app.models import ConnectionEntry
+                                    # Sum of connection_no values, not count
                                     entries = ConnectionEntry.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
-                                    if sel_area: entries = entries.filter(area_name=sel_area)
-                                    # Labour filter for connections? If needed, filter by report's labour
-                                    if sel_labour:
-                                        entries = entries.filter(report__labour_name=sel_labour)
                                     for ce in entries:
-                                        try: total_connections += float(str(ce.connection_no or 0).strip() or 0)
-                                        except: pass
-                                except: pass
-
+                                        try:
+                                            total_connections += float(str(ce.connection_no or 0).strip() or 0)
+                                        except:
+                                            pass
+                                    if total_connections == 0:
+                                        for r in base_qs:
+                                            cv = getattr(r, 'connection', '') or ''
+                                            try:
+                                                if cv:
+                                                    total_connections += float(str(cv).strip() or 0)
+                                            except:
+                                                pass
+                                except Exception as e:
+                                    print(f"Monthly conn sum fail: {e}")
+                                    try:
+                                        for r in base_qs:
+                                            cv = getattr(r, 'connection', '') or ''
+                                            try:
+                                                if cv:
+                                                    total_connections += float(str(cv).strip() or 0)
+                                            except:
+                                                pass
+                                    except:
+                                        pass
                                 with table_container:
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
-                                        ui.badge(period_text, color="green").classes("text- font-bold px-2 py-1")
-                                        ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold")
-
+                                        ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {t63+t90+t110+t150} Qty", color="green").classes("text-xs font-bold px-2 py-1")
                                     tm63 = t63*6 + te63; tm90 = t90*6 + te90; tm110 = t110*6 + te110; tm150 = t150*5.5 + te150
-                                    rows = [
-                                        {"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "unit": "6MTR per PIPES", "total_mtr": tm63},
-                                        {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "unit": "6MTR per PIPES", "total_mtr": tm90},
-                                        {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "unit": "6MTR per PIPES", "total_mtr": tm110},
-                                        {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "unit": "5.5MTR", "total_mtr": tm150},
-                                    ]
-                                    columns = [
-                                        {"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"},
-                                        {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"},
-                                        {"name": "quantity", "label": "Qty", "field": "quantity", "align": "center"},
-                                        {"name": "extra", "label": "Extra", "field": "extra", "align": "center"},
-                                        {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"},
-                                        {"name": "total_mtr", "label": "Total MTR", "field": "total_mtr", "align": "center"},
-                                    ]
+                                    rows = [{"sr_no": 1, "pipe_dia": "63MM PVC", "quantity": t63, "extra": te63, "unit": "6MTR per PIPES", "total_mtr": tm63}, {"sr_no": 2, "pipe_dia": "90MM PVC", "quantity": t90, "extra": te90, "unit": "6MTR per PIPES", "total_mtr": tm90}, {"sr_no": 3, "pipe_dia": "110MM PVC", "quantity": t110, "extra": te110, "unit": "6MTR per PIPES", "total_mtr": tm110}, {"sr_no": 4, "pipe_dia": "150MM DI", "quantity": t150, "extra": te150, "unit": "5.5MTR", "total_mtr": tm150}]
+                                    columns = [{"name": "sr_no", "label": "Sr.No", "field": "sr_no", "align": "center"}, {"name": "pipe_dia", "label": "Pipe Dia", "field": "pipe_dia", "align": "center"}, {"name": "quantity", "label": "Qty", "field": "quantity", "align": "center"}, {"name": "extra", "label": "Extra", "field": "extra", "align": "center"}, {"name": "unit", "label": "UNIT", "field": "unit", "align": "center"}, {"name": "total_mtr", "label": "Total MTR", "field": "total_mtr", "align": "center"}]
                                     ui.table(columns=columns, rows=rows).props("dense flat bordered").classes("w-full rounded-xl shadow-sm border border-green-200 text-xs font-semibold")
                                     with ui.row().classes("w-full justify-center gap-2 mt-2 flex-wrap"):
-                                        ui.badge(f"PVC: {t63+t90+t110} Qty | Extra:{te63+te90+te110} MTR | Total MTR:{tm63+tm90+tm110}", color="blue").classes("text- font-bold px-2 py-1")
-                                        ui.badge(f"DI: {t150} Qty | Extra:{te150} MTR | Total MTR:{tm150}", color="purple").classes("text- font-bold px-2 py-1")
-                                        ui.badge(f"Grand Extra: {te63+te90+te110+te150} MTR | Grand Total MTR: {tm63+tm90+tm110+tm150}", color="green").classes("text- font-bold px-2 py-1")
-                                        ui.badge(f"Total Connections: {total_connections}", color="orange").classes("text- font-bold px-2 py-1")
-
-                                    # Download Dialog - with filter
+                                        ui.badge(f"PVC: {t63+t90+t110} Qty | Extra:{te63+te90+te110} MTR | Total MTR:{tm63+tm90+tm110}", color="blue").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"DI: {t150} Qty | Extra:{te150} MTR | Total MTR:{tm150}", color="purple").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"Grand Extra: {te63+te90+te110+te150} MTR | Grand Total MTR: {tm63+tm90+tm110+tm150}", color="green").classes("text-[10px] font-bold px-2 py-1")
+                                        ui.badge(f"Total Connections: {total_connections}", color="orange").classes("text-[10px] font-bold px-2 py-1")
                                     with ui.dialog() as month_download_dialog, ui.card().classes("rounded-3xl p-0 w-full max-w-xs overflow-hidden shadow-2xl relative"):
                                         with ui.row().classes("w-full justify-between items-center p-3 bg-gradient-to-r from-green-600 to-emerald-600 text-white"):
                                             ui.label(f"📥 Download {period_text}").classes("font-extrabold text-xs text-white")
                                             ui.button(icon="close", on_click=month_download_dialog.close).props("flat round dense color=white").classes("text-white")
                                         with ui.column().classes("w-full p-4 gap-2 bg-white"):
+                                            ui.label(f"{period_text} - {t63+t90+t110+t150} Qty").classes("text-xs font-bold text-green-700 text-center w-full mb-1")
                                             def do_m_csv():
-                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+                                                data = generate_month_csv(user.default_report_title, period_text, t63, t90, t110, t150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.csv")
                                                 month_download_dialog.close()
                                             def do_m_excel():
-                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+                                                data = generate_month_excel(user.default_report_title, period_text, t63, t90, t110, t150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.xlsx")
                                                 month_download_dialog.close()
                                             def do_m_pdf():
-                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110, t150, te63, te90, te110, te150, total_connections)
+                                                data = generate_month_pdf(user.default_report_title, period_text, t63, t90, t110, t150)
                                                 ui.download(data, f"{period_text.replace(' ', '_')}_report.pdf")
                                                 month_download_dialog.close()
                                             ui.button("As CSV", icon="table_view", on_click=do_m_csv).props("outline rounded").classes("w-full font-bold text-sm border-blue-500 text-blue-600")
                                             ui.button("As Excel", icon="description", on_click=do_m_excel).props("outline rounded").classes("w-full font-bold text-sm border-green-500 text-green-600")
                                             ui.button("As PDF", icon="picture_as_pdf", on_click=do_m_pdf).props("outline rounded").classes("w-full font-bold text-sm border-red-500 text-red-600")
                                     ui.button("📥 Download", icon="download", on_click=month_download_dialog.open).props("rounded no-caps").classes("w-full mt-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-2.5 shadow-md")
-
                         def safe_load(*_):
                             try:
-                                # Pehla area/labour options refresh karo, pachhi table
-                                if _ and len(_) > 0:
-                                    # Check if month/year changed
-                                    refresh_area_labour_options()
                                 load_table_data()
                             except Exception as e:
                                 print(f"Filter load error: {e}")
-
-                        # Events
-                        day_select.on_value_change(load_table_data)
-                        month_select.on_value_change(lambda _: (refresh_area_labour_options(), load_table_data()))
-                        year_select.on_value_change(lambda _: (refresh_area_labour_options(), load_table_data()))
-                        area_select.on_value_change(lambda _: (get_distinct_labours(int(year_select.value), int(month_select.value), area_select.value), load_table_data()))
-                        labour_select.on_value_change(load_table_data)
-
-                        # Initial load
-                        ui.timer(0.2, lambda: (refresh_area_labour_options(), load_table_data()), once=True)
+                                try:
+                                    with table_container:
+                                        ui.label(f"Load error: {e}").classes("text-xs text-red-500")
+                                except:
+                                    pass
+                        day_select.on_value_change(safe_load)
+                        month_select.on_value_change(safe_load)
+                        year_select.on_value_change(safe_load)
+                        ui.timer(0.15, safe_load, once=True)
 
         def build_filter_detail(report):
             filter_detail_view.clear()
