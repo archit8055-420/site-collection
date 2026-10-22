@@ -7,3 +7,4 @@ openpyxl
 pandas
 reportlab
 requests
+uvicorn
