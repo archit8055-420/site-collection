@@ -1082,12 +1082,12 @@ def main_spa_page():
                                             pass
                                     
                                     with ui.dialog() as add_conn_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
-                                        ui.label("Add Connection").classes("text-[14px] font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border border-orange-200")
+                                        ui.label("Add Connection").classes("text- font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border border-orange-200")
                                         conn_no_input = ui.input("Connection", placeholder="Ex: 56").props("outlined dense").classes("w-full mt-2 font-bold")
                                         conn_name_input = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
                                         conn_mobile_input = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense type=tel").classes("w-full mt-1 font-bold")
                                         with ui.row().classes("w-full justify-between gap-2 mt-4"):
-                                            ui.button("Cancel", on_click=add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold")
+                                            ui.button("Done", icon="check", on_click=add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold")
                                             def do_add_conn():
                                                 cno = (conn_no_input.value or "").strip()
                                                 cname = (conn_name_input.value or "").strip()
@@ -1095,16 +1095,24 @@ def main_spa_page():
                                                 if not cno:
                                                     ui.notify("Connection No required!", type="warning", position="top")
                                                     return
-                                                # At least connection no needed, name/mobile optional
                                                 conn_list_state["items"].append({"conn": cno, "name": cname, "mobile": cmob})
-                                                conn_no_input.value = ""; conn_name_input.value = ""; conn_mobile_input.value = ""
+                                                # AUTO CLEAR - Main fix
+                                                conn_no_input.value = ""
+                                                conn_name_input.value = ""
+                                                conn_mobile_input.value = ""
                                                 try:
-                                                    conn_no_input.update(); conn_name_input.update(); conn_mobile_input.update()
+                                                    conn_no_input.update()
+                                                    conn_name_input.update()
+                                                    conn_mobile_input.update()
                                                 except:
                                                     pass
-                                                add_conn_dialog.close()
                                                 refresh_conn_list()
-                                                ui.notify(f"✅ Added: {cno},{cname},{cmob}", type="positive", position="top", timeout=1500)
+                                                ui.notify(f"✅ Added: {cno} | Total: {len(conn_list_state['items'])}", type="positive", position="top", timeout=1200)
+                                                # Dialog khullo rakho - bijo entry mate
+                                                try:
+                                                    conn_no_input.run_method('focus')
+                                                except:
+                                                    pass
                                             ui.button("Add", icon="add", on_click=do_add_conn).props("rounded").classes("flex-1 bg-gradient-to-r from-orange-500 to-red-500 text-white font-bold")
                                     
                                     with ui.row().classes("w-full justify-center mt-3"):
