@@ -1575,9 +1575,20 @@ def main_spa_page():
                                                                                 def make_edit(i=idx):
                                                                                     def edit_fn():
                                                                                         edit_target["idx"] = i
-                                                                                        ee_no.value = edit_conn_state["items"][i].get('conn','')
-                                                                                        ee_name.value = edit_conn_state["items"][i].get('name','')
-                                                                                        ee_mob.value = edit_conn_state["items"][i].get('mobile','')
+                                                                                        try:
+                                                                                            # Use set_value to ensure UI updates with current selected data
+                                                                                            ee_no.set_value(str(edit_conn_state["items"][i].get('conn','')))
+                                                                                            ee_name.set_value(str(edit_conn_state["items"][i].get('name','')))
+                                                                                            ee_mob.set_value(str(edit_conn_state["items"][i].get('mobile','')))
+                                                                                        except Exception as e:
+                                                                                            print(f"set_value fail: {e}")
+                                                                                            ee_no.value = edit_conn_state["items"][i].get('conn','')
+                                                                                            ee_name.value = edit_conn_state["items"][i].get('name','')
+                                                                                            ee_mob.value = edit_conn_state["items"][i].get('mobile','')
+                                                                                            try:
+                                                                                                ee_no.update(); ee_name.update(); ee_mob.update()
+                                                                                            except:
+                                                                                                pass
                                                                                         edit_conn_edit_dialog.open()
                                                                                     return edit_fn
                                                                                 def make_del(i=idx):
