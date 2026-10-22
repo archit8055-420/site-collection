@@ -1521,30 +1521,71 @@ def main_spa_page():
                                                                 else:
                                                                     edit_conn_total.set_text(f"Total Connections Today: {total}")
                                                             
-                                                            with ui.dialog() as edit_add_conn_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
-                                                                ui.label("Add Connection").classes("text-[14px] font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border")
-                                                                ec_no = ui.input("Connection", placeholder="Ex: 5").props("outlined dense").classes("w-full mt-2 font-bold")
-                                                                ec_name = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
-                                                                ec_mob = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense").classes("w-full mt-1 font-bold")
+                                                            # Dialogs for editing connection entry
+                                                            with ui.dialog() as edit_conn_edit_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
+                                                                ui.label("Edit Connection").classes("text-[14px] font-extrabold text-blue-700 w-full text-center bg-blue-50 px-3 py-2 rounded-full border")
+                                                                ee_no = ui.input("Connection", placeholder="Ex: 5").props("outlined dense").classes("w-full mt-2 font-bold")
+                                                                ee_name = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                ee_mob = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                edit_target = {"idx": -1}
                                                                 with ui.row().classes("w-full justify-between gap-2 mt-4"):
-                                                                    ui.button("Cancel", on_click=edit_add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 font-bold")
-                                                                    def do_edit_add():
-                                                                        cno = (ec_no.value or "").strip()
+                                                                    ui.button("Cancel", on_click=edit_conn_edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 font-bold")
+                                                                    def do_edit_update():
+                                                                        cno = (ee_no.value or "").strip()
                                                                         if not cno:
                                                                             ui.notify("Connection required!", type="warning")
                                                                             return
-                                                                        edit_conn_state["items"].append({"conn": cno, "name": (ec_name.value or "").strip(), "mobile": (ec_mob.value or "").strip(), "id": None})
-                                                                        ec_no.value=""; ec_name.value=""; ec_mob.value=""
+                                                                        idx = edit_target["idx"]
+                                                                        if 0 <= idx < len(edit_conn_state["items"]):
+                                                                            edit_conn_state["items"][idx] = {"conn": cno, "name": (ee_name.value or "").strip(), "mobile": (ee_mob.value or "").strip(), "id": edit_conn_state["items"][idx].get("id")}
+                                                                        ee_no.value=""; ee_name.value=""; ee_mob.value=""
                                                                         try:
-                                                                            ec_no.update(); ec_name.update(); ec_mob.update()
+                                                                            ee_no.update(); ee_name.update(); ee_mob.update()
                                                                         except:
                                                                             pass
-                                                                        edit_add_conn_dialog.close()
+                                                                        edit_conn_edit_dialog.close()
                                                                         refresh_edit_conn()
-                                                                    ui.button("Add", icon="add", on_click=do_edit_add).props("rounded").classes("flex-1 bg-orange-500 text-white font-bold")
+                                                                    ui.button("Update", icon="check", on_click=do_edit_update).props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
                                                             
-                                                            with ui.row().classes("w-full justify-center mt-2"):
-                                                                ui.button("+Add Connection", icon="add", on_click=edit_add_conn_dialog.open).props("rounded dense").classes("w-full bg-gradient-to-r from-orange-500 to-amber-600 text-white font-bold text-[11px] py-1.5")
+                                                            def refresh_edit_conn():
+                                                                edit_conn_container.clear()
+                                                                total = 0
+                                                                for it in edit_conn_state["items"]:
+                                                                    try:
+                                                                        total += float(str(it.get('conn','0') or 0).strip() or 0)
+                                                                    except:
+                                                                        pass
+                                                                with edit_conn_container:
+                                                                    if not edit_conn_state["items"]:
+                                                                        ui.label("No connections").classes("text-[10px] text-slate-400 text-center w-full py-1")
+                                                                    else:
+                                                                        for idx, item in enumerate(edit_conn_state["items"]):
+                                                                            with ui.row().classes("w-full bg-white rounded-lg p-1.5 border border-orange-100 items-center justify-between"):
+                                                                                ui.label(f"{idx+1}. {item['conn']},{item['name']},{item['mobile']}").classes("text-[10px] font-bold text-slate-800 flex-1")
+                                                                                with ui.row().classes("gap-0"):
+                                                                                    def make_edit(i=idx):
+                                                                                        def edit_fn():
+                                                                                            edit_target["idx"] = i
+                                                                                            ee_no.value = edit_conn_state["items"][i].get('conn','')
+                                                                                            ee_name.value = edit_conn_state["items"][i].get('name','')
+                                                                                            ee_mob.value = edit_conn_state["items"][i].get('mobile','')
+                                                                                            try:
+                                                                                                ee_no.update(); ee_name.update(); ee_mob.update()
+                                                                                            except:
+                                                                                                pass
+                                                                                            edit_conn_edit_dialog.open()
+                                                                                        return edit_fn
+                                                                                    def make_del(i=idx):
+                                                                                        def del_fn():
+                                                                                            edit_conn_state["items"].pop(i)
+                                                                                            refresh_edit_conn()
+                                                                                        return del_fn
+                                                                                    ui.button(icon="edit", on_click=make_edit()).props("flat round dense color=blue size=sm").classes("text-blue-600")
+                                                                                    ui.button(icon="delete", on_click=make_del()).props("flat round dense color=red size=sm").classes("text-red-600")
+                                                                if total == int(total):
+                                                                    edit_conn_total.set_text(f"Total Connections Today: {int(total)}")
+                                                                else:
+                                                                    edit_conn_total.set_text(f"Total Connections Today: {total}")
                                                             
                                                             refresh_edit_conn()
                                                             # Keep old e_connection for backward compat but hidden
