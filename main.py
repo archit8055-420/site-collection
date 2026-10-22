@@ -46,6 +46,41 @@ def ensure_neon_fast():
                 pass
             try:
                 cursor.execute("CREATE INDEX IF NOT EXISTS idx_fast_date ON models_app_dailyreport (report_date);")
+                # Ensure ConnectionEntry table exists (for old Neon DB without migration)
+                try:
+                    # Postgres
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS models_app_connectionentry (
+                            id BIGSERIAL PRIMARY KEY,
+                            report_date DATE NOT NULL,
+                            connection_no VARCHAR(100) NOT NULL DEFAULT '',
+                            name VARCHAR(150) NOT NULL DEFAULT '',
+                            mobile VARCHAR(20) NOT NULL DEFAULT '',
+                            area_name VARCHAR(100) NOT NULL DEFAULT '',
+                            created_at TIMESTAMPTZ DEFAULT NOW(),
+                            user_id BIGINT NOT NULL REFERENCES models_app_appuser (id) ON DELETE CASCADE,
+                            report_id BIGINT REFERENCES models_app_dailyreport (id) ON DELETE CASCADE
+                        );
+                    """)
+                except Exception as e:
+                    print(f"Conn table create (pg) skip: {e}")
+                try:
+                    # SQLite fallback
+                    cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS models_app_connectionentry (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            report_date DATE NOT NULL,
+                            connection_no VARCHAR(100) NOT NULL DEFAULT '',
+                            name VARCHAR(150) NOT NULL DEFAULT '',
+                            mobile VARCHAR(20) NOT NULL DEFAULT '',
+                            area_name VARCHAR(100) NOT NULL DEFAULT '',
+                            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                            user_id INTEGER NOT NULL,
+                            report_id INTEGER
+                        );
+                    """)
+                except Exception as e:
+                    print(f"Conn table create (sqlite) skip: {e}")
             except Exception:
                 pass
             try:
@@ -1015,23 +1050,34 @@ def main_spa_page():
                                     
                                     def refresh_conn_list():
                                         conn_list_container.clear()
+                                        total_sum = 0
+                                        try:
+                                            for it in conn_list_state["items"]:
+                                                try:
+                                                    total_sum += float(str(it.get('conn','0') or 0).strip() or 0)
+                                                except:
+                                                    pass
+                                        except:
+                                            total_sum = 0
                                         with conn_list_container:
                                             if not conn_list_state["items"]:
                                                 ui.label("No connections added yet - Click +Add").classes("text-[10px] text-slate-400 text-center w-full py-2")
                                             else:
                                                 for idx, item in enumerate(conn_list_state["items"], 1):
-                                                    with ui.row().classes("w-full bg-white rounded-xl p-2 border border-orange-100 shadow-sm items-center justify-between"):
+                                                    with ui.row().classes("w-full bg-white rounded-xl p-2 border border-orange-100 shadow-sm items-center"):
                                                         ui.label(f"{idx}. {item['conn']},{item['name']},{item['mobile']}").classes("text-[11px] font-bold text-slate-800 flex-1")
-                                                        def make_delete(i=idx-1):
-                                                            def del_fn():
-                                                                conn_list_state["items"].pop(i)
-                                                                refresh_conn_list()
-                                                            return del_fn
-                                                        ui.button(icon="delete", on_click=make_delete()).props("flat round dense color=red").classes("text-red-500")
-                                        conn_total_lbl.set_text(f"Total Connections Today: {len(conn_list_state['items'])}")
+                                        # Show sum, not count
+                                        if total_sum == int(total_sum):
+                                            conn_total_lbl.set_text(f"Total Connections Today: {int(total_sum)}")
+                                        else:
+                                            conn_total_lbl.set_text(f"Total Connections Today: {total_sum}")
                                         try:
-                                            live_conn_lbl.set_text(f"Connection: {len(conn_list_state['items'])} Entries")
-                                            live_total_lbl.set_text(f"Total MTR: - | Conn: {len(conn_list_state['items'])}")
+                                            if total_sum == int(total_sum):
+                                                live_conn_lbl.set_text(f"Connection: {int(total_sum)}")
+                                                live_total_lbl.set_text(f"Total MTR: - | Conn: {int(total_sum)}")
+                                            else:
+                                                live_conn_lbl.set_text(f"Connection: {total_sum}")
+                                                live_total_lbl.set_text(f"Total MTR: - | Conn: {total_sum}")
                                         except:
                                             pass
                                     
@@ -1223,14 +1269,25 @@ def main_spa_page():
                                 selected_date = today_ist()
                             area_val = (area_input.value or "").strip()
                             labour_val = (labour_input.value or "").strip()
-                            # New: connections list
+                            # New: connections list - sum of connection numbers
                             conn_items = []
                             try:
                                 conn_items = list(conn_list_state.get("items", []))
                             except:
                                 conn_items = []
-                            conn_val = str(len(conn_items)) if conn_items else ""
-                            # For backward compatibility, store first entry as string if needed
+                            conn_sum = 0
+                            try:
+                                for it in conn_items:
+                                    try:
+                                        conn_sum += float(str(it.get('conn','0') or 0).strip() or 0)
+                                    except:
+                                        pass
+                            except:
+                                conn_sum = 0
+                            if conn_sum == int(conn_sum):
+                                conn_val = str(int(conn_sum)) if conn_sum!=0 else ""
+                            else:
+                                conn_val = str(conn_sum) if conn_sum!=0 else ""
                             conn_detail_str = ""
                             try:
                                 if conn_items:
@@ -1379,18 +1436,23 @@ def main_spa_page():
                                     day_total_conn = 0
                                     try:
                                         from models_app.models import ConnectionEntry
-                                        day_total_conn = ConnectionEntry.objects.filter(user=user, report_date=qs.first().report_date if qs.exists() else None).count() if qs.exists() else 0
+                                        if qs.exists():
+                                            entries = ConnectionEntry.objects.filter(user=user, report_date=qs.first().report_date)
+                                            for ce in entries:
+                                                try:
+                                                    day_total_conn += float(str(ce.connection_no or 0).strip() or 0)
+                                                except:
+                                                    pass
                                         if day_total_conn == 0:
-                                            # fallback to sum of connection field
                                             for r in qs:
                                                 try:
                                                     cv = getattr(r, 'connection', '') or ''
                                                     if cv:
-                                                        day_total_conn += int(float(str(cv).strip() or 0))
+                                                        day_total_conn += float(str(cv).strip() or 0)
                                                 except:
                                                     pass
-                                    except:
-                                        pass
+                                    except Exception as e:
+                                        print(f"Daily conn sum fail: {e}")
                                     with ui.row().classes("w-full justify-between items-center mb-2 px-1"):
                                         ui.badge(period_text, color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Total: {grand_total} Qty", color="green").classes("text-xs font-bold px-2 py-1"); ui.badge(f"Conn: {day_total_conn}", color="orange").classes("text-xs font-bold px-2 py-1")
                                     for report in qs[:50]:
@@ -1423,8 +1485,70 @@ def main_spa_page():
                                                             e_area = ui.input(value=report.area_name).props("outlined dense").classes("w-full font-bold")
                                                             ui.label("Labour Name").classes("text-[11px] font-bold text-slate-700")
                                                             e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
-                                                            ui.label("Connection").classes("text-[11px] font-bold text-orange-700")
-                                                            e_connection = ui.input(value=get_q(report,'connection','')).props("outlined dense color=orange").classes("w-full font-bold bg-orange-50")
+                                                            ui.label("Connection (Sum)").classes("text-[11px] font-bold text-orange-700")
+                                                            # Edit dialog: show existing connections for this report and allow add
+                                                            edit_conn_state = {"items": []}
+                                                            try:
+                                                                from models_app.models import ConnectionEntry
+                                                                existing = list(ConnectionEntry.objects.filter(report=report).order_by('id'))
+                                                                if not existing:
+                                                                    existing = list(ConnectionEntry.objects.filter(user=report.user, report_date=report.report_date, area_name=report.area_name).order_by('id'))
+                                                                for ce in existing:
+                                                                    edit_conn_state["items"].append({"conn": ce.connection_no, "name": ce.name, "mobile": ce.mobile, "id": ce.id})
+                                                            except Exception as ee:
+                                                                print(f"Edit conn load fail: {ee}")
+                                                            
+                                                            edit_conn_container = ui.column().classes("w-full gap-1 mt-1")
+                                                            edit_conn_total = ui.label("Total: 0").classes("text-[11px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded-full text-center w-full border")
+                                                            
+                                                            def refresh_edit_conn():
+                                                                edit_conn_container.clear()
+                                                                total = 0
+                                                                for it in edit_conn_state["items"]:
+                                                                    try:
+                                                                        total += float(str(it.get('conn','0') or 0).strip() or 0)
+                                                                    except:
+                                                                        pass
+                                                                with edit_conn_container:
+                                                                    if not edit_conn_state["items"]:
+                                                                        ui.label("No connections - Click +Add").classes("text-[10px] text-slate-400 text-center w-full py-1")
+                                                                    else:
+                                                                        for idx, item in enumerate(edit_conn_state["items"], 1):
+                                                                            with ui.row().classes("w-full bg-white rounded-lg p-1.5 border border-orange-100 items-center"):
+                                                                                ui.label(f"{idx}. {item['conn']},{item['name']},{item['mobile']}").classes("text-[10px] font-bold text-slate-800 flex-1")
+                                                                if total == int(total):
+                                                                    edit_conn_total.set_text(f"Total Connections Today: {int(total)}")
+                                                                else:
+                                                                    edit_conn_total.set_text(f"Total Connections Today: {total}")
+                                                            
+                                                            with ui.dialog() as edit_add_conn_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
+                                                                ui.label("Add Connection").classes("text-[14px] font-extrabold text-orange-700 w-full text-center bg-orange-50 px-3 py-2 rounded-full border")
+                                                                ec_no = ui.input("Connection", placeholder="Ex: 5").props("outlined dense").classes("w-full mt-2 font-bold")
+                                                                ec_name = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                ec_mob = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                with ui.row().classes("w-full justify-between gap-2 mt-4"):
+                                                                    ui.button("Cancel", on_click=edit_add_conn_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 font-bold")
+                                                                    def do_edit_add():
+                                                                        cno = (ec_no.value or "").strip()
+                                                                        if not cno:
+                                                                            ui.notify("Connection required!", type="warning")
+                                                                            return
+                                                                        edit_conn_state["items"].append({"conn": cno, "name": (ec_name.value or "").strip(), "mobile": (ec_mob.value or "").strip(), "id": None})
+                                                                        ec_no.value=""; ec_name.value=""; ec_mob.value=""
+                                                                        try:
+                                                                            ec_no.update(); ec_name.update(); ec_mob.update()
+                                                                        except:
+                                                                            pass
+                                                                        edit_add_conn_dialog.close()
+                                                                        refresh_edit_conn()
+                                                                    ui.button("Add", icon="add", on_click=do_edit_add).props("rounded").classes("flex-1 bg-orange-500 text-white font-bold")
+                                                            
+                                                            with ui.row().classes("w-full justify-center mt-2"):
+                                                                ui.button("+Add Connection", icon="add", on_click=edit_add_conn_dialog.open).props("rounded dense").classes("w-full bg-gradient-to-r from-orange-500 to-amber-600 text-white font-bold text-[11px] py-1.5")
+                                                            
+                                                            refresh_edit_conn()
+                                                            # Keep old e_connection for backward compat but hidden
+                                                            e_connection = ui.input(value=get_q(report,'connection','')).props("outlined dense color=orange").classes("w-full font-bold bg-orange-50 hidden")
                                                             ui.label("Report Title").classes("text-[11px] font-bold text-slate-700")
                                                             e_title = ui.input(value=report.report_title).props("outlined dense").classes("w-full")
                                                             ui.label("PVC & DI Quantity").classes("text-[13px] font-extrabold text-green-700 mt-2")
@@ -1467,11 +1591,26 @@ def main_spa_page():
                                                                             new_date = rpt.report_date
                                                                         new_area = (ea.value or "").strip() or rpt.area_name
                                                                         new_labour = (el.value or "").strip() or get_q(rpt,'labour_name','')
-                                                                        new_conn = (ec.value or "").strip() if 'ec' in locals() or 'ec' in globals() or True else ""
+                                                                        # Calculate sum from edit_conn_state items
+                                                                        new_conn_sum = 0
                                                                         try:
-                                                                            new_conn = (ec.value or "").strip()
+                                                                            for it in edit_conn_state.get("items", []):
+                                                                                try:
+                                                                                    new_conn_sum += float(str(it.get('conn','0') or 0).strip() or 0)
+                                                                                except:
+                                                                                    pass
                                                                         except:
-                                                                            new_conn = get_q(rpt,'connection','')
+                                                                            new_conn_sum = 0
+                                                                        # If no items, fallback to old ec field
+                                                                        if new_conn_sum == 0:
+                                                                            try:
+                                                                                new_conn_sum = float((ec.value or "").strip() or 0)
+                                                                            except:
+                                                                                new_conn_sum = 0
+                                                                        if new_conn_sum == int(new_conn_sum):
+                                                                            new_conn = str(int(new_conn_sum)) if new_conn_sum!=0 else ""
+                                                                        else:
+                                                                            new_conn = str(new_conn_sum) if new_conn_sum!=0 else ""
                                                                         new_title = (et.value or "").strip() or rpt.report_title
                                                                         def pq(v):
                                                                             try: return float(v) if v not in (None, "") else 0
@@ -1501,7 +1640,25 @@ def main_spa_page():
                                                                         rpt.total_qty = q63+q90+q110+q150
                                                                         rpt.price_sum = float(total_mtr)
                                                                         rpt.save()
-                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} (+Extra:{ex_63+ex_90+ex_110+ex_150})", type="positive", position="top", timeout=2000)
+                                                                        # Save ConnectionEntry: delete old and recreate from edit_conn_state
+                                                                        try:
+                                                                            from models_app.models import ConnectionEntry
+                                                                            ConnectionEntry.objects.filter(report=rpt).delete()
+                                                                            # Also delete by date+user+area for old data without report link
+                                                                            if not edit_conn_state.get("items"):
+                                                                                pass
+                                                                            else:
+                                                                                for it in edit_conn_state.get("items", []):
+                                                                                    ConnectionEntry.objects.create(
+                                                                                        user=rpt.user, report=rpt, report_date=new_date,
+                                                                                        connection_no=str(it.get('conn','')).strip(),
+                                                                                        name=str(it.get('name','')).strip(),
+                                                                                        mobile=str(it.get('mobile','')).strip(),
+                                                                                        area_name=new_area
+                                                                                    )
+                                                                        except Exception as ce:
+                                                                            print(f"Edit conn save fail: {ce}")
+                                                                        ui.notify(f"✅ Updated! MTR:{total_mtr} Conn Sum:{new_conn_sum}", type="positive", position="top", timeout=2000)
                                                                         dlg.close()
                                                                         load_table_data()
                                                                     except Exception as ex:
@@ -1537,7 +1694,13 @@ def main_spa_page():
                                 total_connections = 0
                                 try:
                                     from models_app.models import ConnectionEntry
-                                    total_connections = ConnectionEntry.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month).count()
+                                    # Sum of connection_no values, not count
+                                    entries = ConnectionEntry.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
+                                    for ce in entries:
+                                        try:
+                                            total_connections += float(str(ce.connection_no or 0).strip() or 0)
+                                        except:
+                                            pass
                                     if total_connections == 0:
                                         for r in base_qs:
                                             cv = getattr(r, 'connection', '') or ''
@@ -1546,7 +1709,8 @@ def main_spa_page():
                                                     total_connections += float(str(cv).strip() or 0)
                                             except:
                                                 pass
-                                except:
+                                except Exception as e:
+                                    print(f"Monthly conn sum fail: {e}")
                                     try:
                                         for r in base_qs:
                                             cv = getattr(r, 'connection', '') or ''
