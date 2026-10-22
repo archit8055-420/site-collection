@@ -1486,7 +1486,6 @@ def main_spa_page():
                                                             ui.label("Labour Name").classes("text-[11px] font-bold text-slate-700")
                                                             e_labour = ui.input(value=get_q(report,'labour_name','')).props("outlined dense").classes("w-full font-bold")
                                                             ui.label("Connection (Sum)").classes("text-[11px] font-bold text-orange-700")
-                                                            # Robust edit connection state
                                                             edit_conn_state = {"items": []}
                                                             try:
                                                                 from models_app.models import ConnectionEntry
@@ -1500,31 +1499,9 @@ def main_spa_page():
                                                             
                                                             edit_conn_total = ui.label("Total: 0").classes("text-[11px] font-bold text-green-700 bg-green-50 px-2 py-1 rounded-full text-center w-full border mt-1")
                                                             
-                                                            edit_target = {"idx": -1}
                                                             del_target = {"idx": -1}
                                                             
-                                                            # Edit connection dialog
-                                                            with ui.dialog() as edit_conn_edit_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
-                                                                ui.label("Edit Connection").classes("text-[14px] font-extrabold text-blue-700 w-full text-center bg-blue-50 px-3 py-2 rounded-full border")
-                                                                ee_no = ui.input("Connection", placeholder="Ex: 5").props("outlined dense").classes("w-full mt-2 font-bold")
-                                                                ee_name = ui.input("Enter Name", placeholder="Ex: Mohanlal").props("outlined dense").classes("w-full mt-1 font-bold")
-                                                                ee_mob = ui.input("Mobile No", placeholder="Ex: 9988779988").props("outlined dense").classes("w-full mt-1 font-bold")
-                                                                with ui.row().classes("w-full justify-between gap-2 mt-4"):
-                                                                    ui.button("Cancel", on_click=edit_conn_edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 font-bold")
-                                                                    def do_edit_update():
-                                                                        cno = (ee_no.value or "").strip()
-                                                                        if not cno:
-                                                                            ui.notify("Connection required!", type="warning")
-                                                                            return
-                                                                        idx = edit_target["idx"]
-                                                                        if 0 <= idx < len(edit_conn_state["items"]):
-                                                                            edit_conn_state["items"][idx] = {"conn": cno, "name": (ee_name.value or "").strip(), "mobile": (ee_mob.value or "").strip(), "id": edit_conn_state["items"][idx].get("id")}
-                                                                            ui.notify(f"✏️ Updated: {cno} - Click main Edit to save to DB", type="positive", position="top", timeout=2000)
-                                                                        edit_conn_edit_dialog.close()
-                                                                        refresh_edit_conn_list.refresh()
-                                                                    ui.button("Update", icon="check", on_click=do_edit_update).props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
-                                                            
-                                                            # Delete confirmation dialog
+                                                            # Delete confirmation dialog (single, reused)
                                                             with ui.dialog() as del_confirm_dialog, ui.card().classes("rounded-2xl p-0 w-full max-w-sm shadow-2xl overflow-hidden"):
                                                                 with ui.column().classes("w-full p-0 gap-0"):
                                                                     with ui.row().classes("w-full bg-gradient-to-r from-red-500 to-orange-600 p-3 items-center text-white"):
@@ -1537,16 +1514,13 @@ def main_spa_page():
                                                                             ui.button("Cancel", icon="close", on_click=del_confirm_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 text-slate-700 font-bold text-[12px]")
                                                                             def do_confirm_delete():
                                                                                 idx = del_target["idx"]
-                                                                                print(f"DELETE called idx={idx} len={len(edit_conn_state['items'])}")
                                                                                 if 0 <= idx < len(edit_conn_state["items"]):
-                                                                                    removed = edit_conn_state["items"].pop(idx)
-                                                                                    print(f"Removed {removed}")
+                                                                                    edit_conn_state["items"].pop(idx)
                                                                                     del_confirm_dialog.close()
                                                                                     refresh_edit_conn_list.refresh()
-                                                                                    ui.notify("🗑️ Deleted! Now click main Edit button to save to database.", type="positive", position="top", timeout=2000)
+                                                                                    ui.notify("🗑️ Deleted! Now click main Edit to save.", type="positive", position="top", timeout=2000)
                                                                                 else:
                                                                                     del_confirm_dialog.close()
-                                                                                    ui.notify("❌ Delete failed - invalid index", type="negative", position="top")
                                                                             ui.button("Delete", icon="delete", on_click=do_confirm_delete).props("rounded").classes("flex-1 bg-gradient-to-r from-red-600 to-red-700 text-white font-bold text-[12px]")
                                                             
                                                             @ui.refreshable
@@ -1574,22 +1548,28 @@ def main_spa_page():
                                                                             with ui.row().classes("gap-0"):
                                                                                 def make_edit(i=idx):
                                                                                     def edit_fn():
-                                                                                        edit_target["idx"] = i
-                                                                                        try:
-                                                                                            # Use set_value to ensure UI updates with current selected data
-                                                                                            ee_no.set_value(str(edit_conn_state["items"][i].get('conn','')))
-                                                                                            ee_name.set_value(str(edit_conn_state["items"][i].get('name','')))
-                                                                                            ee_mob.set_value(str(edit_conn_state["items"][i].get('mobile','')))
-                                                                                        except Exception as e:
-                                                                                            print(f"set_value fail: {e}")
-                                                                                            ee_no.value = edit_conn_state["items"][i].get('conn','')
-                                                                                            ee_name.value = edit_conn_state["items"][i].get('name','')
-                                                                                            ee_mob.value = edit_conn_state["items"][i].get('mobile','')
-                                                                                            try:
-                                                                                                ee_no.update(); ee_name.update(); ee_mob.update()
-                                                                                            except:
-                                                                                                pass
-                                                                                        edit_conn_edit_dialog.open()
+                                                                                        # Create fresh dialog with current item's data - ensures correct data shows
+                                                                                        cur = edit_conn_state["items"][i]
+                                                                                        print(f"EDIT click idx={i} data={cur}")
+                                                                                        with ui.dialog() as dyn_edit_dialog, ui.card().classes("rounded-2xl p-4 w-full max-w-sm bg-white shadow-2xl"):
+                                                                                            ui.label("Edit Connection").classes("text-[14px] font-extrabold text-blue-700 w-full text-center bg-blue-50 px-3 py-2 rounded-full border")
+                                                                                            # Pre-fill with CURRENT row data
+                                                                                            e_conn = ui.input("Connection", value=str(cur.get('conn',''))).props("outlined dense").classes("w-full mt-2 font-bold")
+                                                                                            e_name = ui.input("Enter Name", value=str(cur.get('name',''))).props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                                            e_mob = ui.input("Mobile No", value=str(cur.get('mobile',''))).props("outlined dense").classes("w-full mt-1 font-bold")
+                                                                                            with ui.row().classes("w-full justify-between gap-2 mt-4"):
+                                                                                                ui.button("Cancel", on_click=dyn_edit_dialog.close).props("flat rounded").classes("flex-1 bg-slate-100 font-bold")
+                                                                                                def do_update():
+                                                                                                    cno = (e_conn.value or "").strip()
+                                                                                                    if not cno:
+                                                                                                        ui.notify("Connection required!", type="warning")
+                                                                                                        return
+                                                                                                    edit_conn_state["items"][i] = {"conn": cno, "name": (e_name.value or "").strip(), "mobile": (e_mob.value or "").strip(), "id": edit_conn_state["items"][i].get("id")}
+                                                                                                    dyn_edit_dialog.close()
+                                                                                                    refresh_edit_conn_list.refresh()
+                                                                                                    ui.notify(f"✏️ Updated! Now click main Edit to save.", type="positive", position="top", timeout=1500)
+                                                                                                ui.button("Update", icon="check", on_click=do_update).props("rounded").classes("flex-1 bg-blue-600 text-white font-bold")
+                                                                                        dyn_edit_dialog.open()
                                                                                     return edit_fn
                                                                                 def make_del(i=idx):
                                                                                     def del_fn():
