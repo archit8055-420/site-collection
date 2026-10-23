@@ -1437,25 +1437,37 @@ def main_spa_page():
 
                         table_container = ui.column().classes("w-full mt-1 gap-2")
 
+
+
                         def refresh_area_labour_dropdowns():
                             try:
-                                sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
-                                base_qs = DailyReport.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
-                                if sel_day:
-                                    base_qs = base_qs.filter(report_date__day=int(sel_day))
-                                # Distinct Areas for this month
-                                areas = base_qs.values_list('area_name', flat=True).distinct()
                                 area_opts = {"All": "All Areas"}
-                                for a in areas:
-                                    if a:
-                                        area_opts[a] = a
-                                # Distinct Labours for this month
-                                labours = base_qs.values_list('labour_name', flat=True).distinct()
+                                try:
+                                    saved_areas = SavedArea.objects.filter(user=user).values_list('area_name', flat=True).distinct()
+                                    for a in saved_areas:
+                                        if a and a.strip():
+                                            area_opts[a.strip()] = a.strip()
+                                except: pass
+                                try:
+                                    report_areas = DailyReport.objects.filter(user=user).values_list('area_name', flat=True).distinct()
+                                    for a in report_areas:
+                                        if a and a.strip() and a.strip() not in area_opts:
+                                            area_opts[a.strip()] = a.strip()
+                                except: pass
                                 labour_opts = {"All": "All Labours"}
-                                for l in labours:
-                                    if l and l.strip():
-                                        labour_opts[l] = l
-                                # Update dropdowns, keep All as default if not exists
+                                try:
+                                    if HAS_LABOUR_MODEL:
+                                        saved_labours = SavedLabour.objects.filter(user=user).values_list('labour_name', flat=True).distinct()
+                                        for l in saved_labours:
+                                            if l and l.strip():
+                                                labour_opts[l.strip()] = l.strip()
+                                except: pass
+                                try:
+                                    report_labours = DailyReport.objects.filter(user=user).values_list('labour_name', flat=True).distinct()
+                                    for l in report_labours:
+                                        if l and l.strip() and l.strip() not in labour_opts:
+                                            labour_opts[l.strip()] = l.strip()
+                                except: pass
                                 current_area = area_select.value if area_select.value in area_opts else "All"
                                 current_labour = labour_select.value if labour_select.value in labour_opts else "All"
                                 area_select.set_options(area_opts)
@@ -1463,7 +1475,8 @@ def main_spa_page():
                                 labour_select.set_options(labour_opts)
                                 labour_select.value = current_labour
                             except Exception as e:
-                                print(f"Dropdown refresh fail: {e}")
+                                print(f"Dropdown fail: {e}")
+                        def safe_load(*_):
 
                         def load_table_data():
                             table_container.clear()
@@ -1869,6 +1882,7 @@ def main_spa_page():
                                     ui.button("📥 Download", icon="download", on_click=month_download_dialog.open).props("rounded no-caps").classes("w-full mt-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold py-2.5 shadow-md")
                         def safe_load(*_):
                             try:
+                                refresh_area_labour_dropdowns() 
                                 load_table_data()
                             except Exception as e:
                                 print(f"Filter load error: {e}")
