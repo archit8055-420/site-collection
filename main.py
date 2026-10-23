@@ -1431,11 +1431,55 @@ def main_spa_page():
                             date_options = {"": "Select Date", **{str(d): f"{d:02d}" for d in range(1, 32)}}; day_select = ui.select(options=date_options, value="", label="Date").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
                             month_select = ui.select(options=months, value=today.month, label="Month").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
                             year_select = ui.select(options=years, value=today.year, label="Year").props("outlined rounded dense color=green").classes("w-full bg-white font-semibold text-xs")
+                        with ui.grid(columns=2).classes("w-full gap-1.5 my-2 bg-blue-50 p-2 rounded-2xl border border-blue-200"):
+                            area_select = ui.select(options={"All": "All Areas"}, value="All", label="Select Area").props("outlined rounded dense color=blue").classes("w-full bg-white font-bold text-xs")
+                            labour_select = ui.select(options={"All": "All Labours"}, value="All", label="Select Labour").props("outlined rounded dense color=orange").classes("w-full bg-white font-bold text-xs")
+
                         table_container = ui.column().classes("w-full mt-1 gap-2")
+
+                        def refresh_area_labour_dropdowns():
+                            try:
+                                sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
+                                base_qs = DailyReport.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
+                                if sel_day:
+                                    base_qs = base_qs.filter(report_date__day=int(sel_day))
+                                # Distinct Areas for this month
+                                areas = base_qs.values_list('area_name', flat=True).distinct()
+                                area_opts = {"All": "All Areas"}
+                                for a in areas:
+                                    if a:
+                                        area_opts[a] = a
+                                # Distinct Labours for this month
+                                labours = base_qs.values_list('labour_name', flat=True).distinct()
+                                labour_opts = {"All": "All Labours"}
+                                for l in labours:
+                                    if l and l.strip():
+                                        labour_opts[l] = l
+                                # Update dropdowns, keep All as default if not exists
+                                current_area = area_select.value if area_select.value in area_opts else "All"
+                                current_labour = labour_select.value if labour_select.value in labour_opts else "All"
+                                area_select.set_options(area_opts)
+                                area_select.value = current_area
+                                labour_select.set_options(labour_opts)
+                                labour_select.value = current_labour
+                            except Exception as e:
+                                print(f"Dropdown refresh fail: {e}")
+
                         def load_table_data():
                             table_container.clear()
                             sel_month = int(month_select.value); sel_year = int(year_select.value); sel_day = day_select.value
+                            sel_area = area_select.value
+                            sel_labour = labour_select.value
                             base_qs = DailyReport.objects.filter(user=user, report_date__year=sel_year, report_date__month=sel_month)
+                            if sel_day:
+                                base_qs = base_qs.filter(report_date__day=int(sel_day))
+                            # Filter by Area
+                            if sel_area and sel_area != "All":
+                                base_qs = base_qs.filter(area_name=sel_area)
+                            # Filter by Labour
+                            if sel_labour and sel_labour != "All":
+                                base_qs = base_qs.filter(labour_name=sel_labour)
+
                             if not base_qs.exists():
                                 with table_container:
                                     with ui.card().classes("w-full p-5 rounded-2xl bg-red-50 border-2 border-red-200 items-center text-center shadow-sm"):
