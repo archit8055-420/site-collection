@@ -1,6 +1,7 @@
 import os, datetime, csv, io, secrets, hashlib, traceback, requests, asyncio
 print("🚀 FINAL VERAVAL TRACKER Loading...", flush=True)
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
+from django.db import connection, close_old_connections
 from nicegui import ui, app, run
 CACHE = {"users": {}, "areas": {}, "pwd_verified": {}}
 from db_setup import init_django
@@ -14,7 +15,7 @@ try:
     HAS_LABOUR_MODEL = True
 except:
     HAS_LABOUR_MODEL = False
-from django.db import connection
+from django.db import connection, close_old_connections
 
 def ensure_neon_fast():
     # SAFE VERSION - Works for both Postgres (Neon) and SQLite (Local)
@@ -179,8 +180,8 @@ def ensure_neon_fast():
             print("✅ FAST INDEX OK - Point values handled by FloatField", flush=True)
     except Exception as e:
         print(f"Index skip (safe): {e}", flush=True)
-ensure_neon_fast()
 
+finally: 
 try:
     from models_app.models import PasswordResetToken
     HAS_TOKEN_MODEL = True
@@ -2025,7 +2026,11 @@ def main_spa_page():
                     ui.button("Back", icon="arrow_back", on_click=show_login).props("flat no-caps").classes("back-btn w-full font-semibold text-sm mt-1")
 
         async def handle_login():
-            email = (email_input.value or "").strip()
+            try:
+                close_old_connections()
+            except:
+                pass
+            email = (email_input.value or "").strip().lower()
             pwd = (pass_input.value or "").strip()
             if not email or not pwd:
                 ui.notify("Enter Email & Password!", type="warning", position="top")
@@ -2050,12 +2055,29 @@ def main_spa_page():
             try:
                 def get_user_and_check():
                     try:
-                        u = AppUser.objects.get(email=email)
+                        u = AppUser.objects.get(email__iexact=email)  # <-- iexact
                     except AppUser.DoesNotExist:
                         return None, False
                     is_ok = check_password(pwd, u.password)
                     return u, is_ok
-                quick_user, is_valid = await run.io_bound(get_user_and_check)
+                quick_user, is_valid = None, False
+                for attempt in range(2):   # <-- RETRY LOGIC
+                    try:
+                        quick_user, is_valid = await run.io_bound(get_user_and_check)
+                        break
+                    except Exception as e:
+                        if "connection is closed" in str(e).lower():
+                            try:
+                                close_old_connections()
+                            except:
+                                pass
+                            await asyncio.sleep(0.5)
+                            if attempt == 1:
+                                raise e
+                            continue
+                        else:
+                            raise e
+
                 if not quick_user:
                     status_label.set_text("❌ User not found")
                     ui.notify("User not found! Register first.", type="negative", position="top")
