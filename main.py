@@ -1476,7 +1476,7 @@ def main_spa_page():
                                 labour_select.value = current_labour
                             except Exception as e:
                                 print(f"Dropdown fail: {e}")
-                        def safe_load(*_):
+                        
 
                         def load_table_data():
                             table_container.clear()
