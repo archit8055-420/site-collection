@@ -181,7 +181,7 @@ def ensure_neon_fast():
     except Exception as e:
         print(f"Index skip (safe): {e}", flush=True)
 
-finally: 
+
 try:
     from models_app.models import PasswordResetToken
     HAS_TOKEN_MODEL = True
@@ -1254,8 +1254,16 @@ def main_spa_page():
                             try:
                                 live_area_lbl.set_text(f"Area: {(area_input.value or '').strip() or '-'}")
                                 live_labour_lbl.set_text(f"Labour: {(labour_input.value or '').strip() or '-'}")
-                                live_conn_lbl.set_text(f"Connection: {(connection_input.value or '').strip() or '-'}")
-                                live_total_lbl.set_text(f"Total MTR: {total_mtr} MTR")
+                                conn_sum = 0
+                                for it in conn_list_state.get("items", []):
+                                    try:
+                                        conn_sum += float(str(it.get('conn','0') or 0).strip() or 0)
+                                    except:
+                                        pass
+                                if conn_sum == int(conn_sum):
+                                    conn_sum = int(conn_sum)
+                                live_conn_lbl.set_text(f"Connection: {conn_sum if conn_sum!=0 else '-'}")
+                                live_total_lbl.set_text(f"Total MTR: {total_mtr} MTR | Conn: {conn_sum if conn_sum!=0 else '-'}")
                             except:
                                 pass
                         
