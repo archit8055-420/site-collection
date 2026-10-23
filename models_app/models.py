@@ -19,7 +19,7 @@ class AppUser(models.Model):
         return self.username
 
 class SavedArea(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="areas")
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='areas')
     area_name = models.CharField(max_length=150)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
@@ -30,7 +30,7 @@ class SavedArea(models.Model):
         return self.area_name
 
 class SavedLabour(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="labours")
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='labours')
     labour_name = models.CharField(max_length=150)
     created_at = models.DateTimeField(auto_now_add=True, null=True, blank=True)
 
@@ -41,7 +41,7 @@ class SavedLabour(models.Model):
         return self.labour_name
 
 class DailyReport(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="reports")
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='reports', null=True)
     report_title = models.CharField(max_length=255, default="Site Daily Progress Report")
     report_date = models.DateField()
     area_name = models.CharField(max_length=150)
@@ -70,8 +70,8 @@ class DailyReport(models.Model):
         return f"{self.area_name} - {self.report_date}"
 
 class ConnectionEntry(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="connection_entries")
-    report = models.ForeignKey(DailyReport, on_delete=models.CASCADE, related_name="connections", null=True, blank=True)
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='connections', null=True)
+    report = models.ForeignKey(DailyReport, on_delete=models.CASCADE, related_name='connection_entries', null=True, blank=True)
     report_date = models.DateField()
     connection_no = models.CharField(max_length=100, default="", blank=True)
     name = models.CharField(max_length=150, default="", blank=True)
@@ -83,9 +83,9 @@ class ConnectionEntry(models.Model):
         return f"{self.connection_no},{self.name},{self.mobile} - {self.report_date}"
 
 class PasswordResetToken(models.Model):
-    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name="reset_tokens")
+    user = models.ForeignKey(AppUser, on_delete=models.CASCADE, related_name='reset_tokens')
     token = models.CharField(max_length=100, unique=True)
     created_at = models.DateTimeField(auto_now_add=True)
-    
+
     def __str__(self):
         return f"Reset token for {self.user.email}"
