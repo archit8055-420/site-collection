@@ -181,7 +181,7 @@ def ensure_neon_fast():
     except Exception as e:
         print(f"Index skip (safe): {e}", flush=True)
 
-
+ensure_neon_fast()
 try:
     from models_app.models import PasswordResetToken
     HAS_TOKEN_MODEL = True
