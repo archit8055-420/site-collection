@@ -14,13 +14,12 @@ def init_django():
             import dj_database_url
             DATABASES = {
                 'default': dj_database_url.parse(
-                    DATABASE_URL, 
-                    conn_max_age=0,  # <-- FIX: 600 hati, have 0 kari - har vaar navo connection
-                    conn_health_checks=True,  # <-- FIX: Health check on
+                    DATABASE_URL,
+                    conn_max_age=0,
+                    conn_health_checks=True,
                     ssl_require=True
                 )
             }
-            # Extra keepalive for Neon
             DATABASES['default']['CONN_MAX_AGE'] = 0
             DATABASES['default']['CONN_HEALTH_CHECKS'] = True
             DATABASES['default'].setdefault('OPTIONS', {})
@@ -31,7 +30,6 @@ def init_django():
                 'keepalives_count': 5,
             })
         except ImportError:
-            # Fallback if dj-database-url not installed
             DATABASES = {
                 "default": {
                     "ENGINE": "django.db.backends.postgresql",
@@ -40,8 +38,8 @@ def init_django():
                     "PASSWORD": os.getenv("PGPASSWORD", ""),
                     "HOST": os.getenv("PGHOST", ""),
                     "PORT": os.getenv("PGPORT", "5432"),
-                    "CONN_MAX_AGE": 0,  # <-- FIX
-                    "CONN_HEALTH_CHECKS": True,  # <-- FIX
+                    "CONN_MAX_AGE": 0,
+                    "CONN_HEALTH_CHECKS": True,
                     "OPTIONS": {
                         "sslmode": "require",
                         "keepalives": 1,
@@ -75,8 +73,7 @@ def init_django():
         DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
     )
     django.setup()
-    
-    # FIX: Close old connections on startup
+
     try:
         from django.db import close_old_connections
         close_old_connections()
