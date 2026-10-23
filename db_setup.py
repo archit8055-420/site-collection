@@ -9,12 +9,27 @@ def init_django():
     DATABASE_URL = os.getenv("DATABASE_URL", "")
 
     if DATABASE_URL:
-        # NEON - Postgres (Live)
+        # NEON - Postgres (Live) - FIXED
         try:
             import dj_database_url
             DATABASES = {
-                'default': dj_database_url.parse(DATABASE_URL, conn_max_age=600, ssl_require=True)
+                'default': dj_database_url.parse(
+                    DATABASE_URL, 
+                    conn_max_age=0,  # <-- FIX: 600 hati, have 0 kari - har vaar navo connection
+                    conn_health_checks=True,  # <-- FIX: Health check on
+                    ssl_require=True
+                )
             }
+            # Extra keepalive for Neon
+            DATABASES['default']['CONN_MAX_AGE'] = 0
+            DATABASES['default']['CONN_HEALTH_CHECKS'] = True
+            DATABASES['default'].setdefault('OPTIONS', {})
+            DATABASES['default']['OPTIONS'].update({
+                'keepalives': 1,
+                'keepalives_idle': 30,
+                'keepalives_interval': 10,
+                'keepalives_count': 5,
+            })
         except ImportError:
             # Fallback if dj-database-url not installed
             DATABASES = {
@@ -25,7 +40,15 @@ def init_django():
                     "PASSWORD": os.getenv("PGPASSWORD", ""),
                     "HOST": os.getenv("PGHOST", ""),
                     "PORT": os.getenv("PGPORT", "5432"),
-                    "OPTIONS": {"sslmode": "require"},
+                    "CONN_MAX_AGE": 0,  # <-- FIX
+                    "CONN_HEALTH_CHECKS": True,  # <-- FIX
+                    "OPTIONS": {
+                        "sslmode": "require",
+                        "keepalives": 1,
+                        "keepalives_idle": 30,
+                        "keepalives_interval": 10,
+                        "keepalives_count": 5,
+                    },
                 }
             }
     else:
@@ -35,6 +58,7 @@ def init_django():
             "default": {
                 "ENGINE": "django.db.backends.sqlite3",
                 "NAME": os.path.join(BASE_DIR, "db.sqlite3"),
+                "CONN_MAX_AGE": 0,
             }
         }
 
@@ -51,3 +75,10 @@ def init_django():
         DEFAULT_AUTO_FIELD='django.db.models.BigAutoField'
     )
     django.setup()
+    
+    # FIX: Close old connections on startup
+    try:
+        from django.db import close_old_connections
+        close_old_connections()
+    except:
+        pass
